@@ -20,12 +20,16 @@ struct AssetDetailView: View {
                 Chart(previewPoints, id: \.timestamp) { point in
                     LineMark(
                         x: .value("Time", point.timestamp),
-                        y: .value("Price", point.price as NSDecimalNumber)
+                        y: .value("Price", decimalToDouble(point.price))
                     )
                 }
                 .frame(height: 200)
             }
         }
         .navigationTitle("Asset Detail")
+    }
+
+    private func decimalToDouble(_ value: Decimal) -> Double {
+        NSDecimalNumber(decimal: value).doubleValue
     }
 }
