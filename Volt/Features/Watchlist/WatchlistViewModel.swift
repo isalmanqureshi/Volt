@@ -8,12 +8,14 @@ final class WatchlistViewModel: ObservableObject {
         let symbol: String
         let name: String
         let priceText: String
+        let changeText: String
         let sourceText: String
         let isSimulated: Bool
     }
 
     @Published private(set) var rows: [RowState] = []
     @Published private(set) var connectionState: StreamConnectionState = .idle
+    @Published private(set) var seedingState: MarketSeedingState = .idle
 
     private let marketDataRepository: MarketDataRepository
     private let assetsBySymbol: [String: Asset]
@@ -35,6 +37,7 @@ final class WatchlistViewModel: ObservableObject {
                         symbol: quote.symbol,
                         name: asset.displayName,
                         priceText: quote.lastPrice.formatted(.number.precision(.fractionLength(0...asset.pricePrecision))),
+                        changeText: "\(quote.changePercent.formatted(.number.precision(.fractionLength(2))))%",
                         sourceText: quote.source,
                         isSimulated: quote.isSimulated
                     )
@@ -47,5 +50,9 @@ final class WatchlistViewModel: ObservableObject {
         marketDataRepository.connectionStatePublisher
             .receive(on: RunLoop.main)
             .assign(to: &$connectionState)
+
+        marketDataRepository.seedingStatePublisher
+            .receive(on: RunLoop.main)
+            .assign(to: &$seedingState)
     }
 }

@@ -11,6 +11,7 @@ final class DefaultMarketDataRepositoryTests: XCTestCase {
         )
         let repository = DefaultMarketDataRepository(
             seedProvider: MockMarketSeedProvider(),
+            historicalDataProvider: MockHistoricalDataProvider(),
             simulationEngine: engine,
             symbols: ["BTC/USD", "ETH/USD", "SOL/USD"]
         )

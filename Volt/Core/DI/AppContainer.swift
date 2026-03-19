@@ -4,43 +4,59 @@ import Combine
 @MainActor
 final class AppContainer: ObservableObject {
     let environmentProvider: EnvironmentProviding
+    let configuration: AppConfiguration
     let marketDataRepository: MarketDataRepository
     let portfolioRepository: PortfolioRepository
     let tradingSimulationService: TradingSimulationService
 
     private init(
         environmentProvider: EnvironmentProviding,
+        configuration: AppConfiguration,
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
         tradingSimulationService: TradingSimulationService
     ) {
         self.environmentProvider = environmentProvider
+        self.configuration = configuration
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.tradingSimulationService = tradingSimulationService
     }
 
     static func bootstrap() -> AppContainer {
-        let environmentProvider = AppEnvironmentProvider(currentEnvironment: .mock)
+        let configuration = AppConfiguration.current()
+        let environmentProvider = AppEnvironmentProvider(currentEnvironment: configuration.environment)
         let seedProvider: MarketSeedProvider
+        let historicalDataProvider: HistoricalDataProvider
         switch environmentProvider.currentEnvironment {
         case .mock:
             seedProvider = MockMarketSeedProvider()
+            historicalDataProvider = MockHistoricalDataProvider()
         case .twelveDataSeededSimulation:
-            seedProvider = TwelveDataMarketSeedProvider()
+            seedProvider = TwelveDataMarketSeedProvider(
+                baseURL: configuration.twelveDataBaseURL,
+                apiKey: configuration.twelveDataAPIKey
+            )
+            historicalDataProvider = TwelveDataHistoricalDataProvider(
+                baseURL: configuration.twelveDataBaseURL,
+                apiKey: configuration.twelveDataAPIKey
+            )
         }
 
-        let simulationEngine = DefaultMarketSimulationEngine()
+        let simulationEngine = DefaultMarketSimulationEngine(config: configuration.simulationConfig)
         let marketDataRepository = DefaultMarketDataRepository(
             seedProvider: seedProvider,
+            historicalDataProvider: historicalDataProvider,
             simulationEngine: simulationEngine,
-            symbols: SupportedAssets.demoAssets.map(\.symbol)
+            symbols: configuration.enabledAssets.map(\.symbol),
+            defaultCandleOutputSize: configuration.defaultCandleOutputSize
         )
-        let portfolioRepository = InMemoryPortfolioRepository()
+        let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketDataRepository)
         let tradingSimulationService = DefaultTradingSimulationService()
 
         let container = AppContainer(
             environmentProvider: environmentProvider,
+            configuration: configuration,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
             tradingSimulationService: tradingSimulationService
@@ -54,10 +70,18 @@ final class AppContainer: ObservableObject {
     }
 
     func makeWatchlistViewModel() -> WatchlistViewModel {
-        WatchlistViewModel(marketDataRepository: marketDataRepository, assets: SupportedAssets.demoAssets)
+        WatchlistViewModel(marketDataRepository: marketDataRepository, assets: configuration.enabledAssets)
     }
 
     func makePortfolioViewModel() -> PortfolioViewModel {
         PortfolioViewModel(portfolioRepository: portfolioRepository)
+    }
+
+    func makeAssetDetailViewModel(symbol: String) -> AssetDetailViewModel {
+        AssetDetailViewModel(
+            symbol: symbol,
+            marketDataRepository: marketDataRepository,
+            defaultCandleOutputSize: configuration.defaultCandleOutputSize
+        )
     }
 }
