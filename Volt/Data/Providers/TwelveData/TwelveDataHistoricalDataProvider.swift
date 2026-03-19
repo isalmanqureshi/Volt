@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 struct TwelveDataHistoricalDataProvider: HistoricalDataProvider {
     enum ProviderError: Error {

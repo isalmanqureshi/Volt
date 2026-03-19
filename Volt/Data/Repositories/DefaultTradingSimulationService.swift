@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 final class DefaultTradingSimulationService: TradingSimulationService {
     enum TradingError: Error {
