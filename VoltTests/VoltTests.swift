@@ -15,10 +15,11 @@ final class VoltTests: XCTestCase {
         )
 
         let draft = OrderDraft(assetSymbol: "BTC/USD", side: .buy, type: .market, quantity: 1, estimatedPrice: 50_000, submittedAt: .now, limitPrice: nil, stopPrice: nil)
-        let position = try service.placeOrder(draft)
+        let result = try service.placeOrder(draft)
 
-        XCTAssertEqual(position.symbol, "BTC/USD")
+        XCTAssertEqual(result.orderRecord.symbol, "BTC/USD")
         XCTAssertEqual(portfolio.currentPositions.count, 1)
+        XCTAssertEqual(portfolio.currentOrderHistory.count, 1)
     }
 
     func testBuyOrderValidationFailsForInvalidQuantity() {

@@ -26,6 +26,13 @@ struct RootTabView: View {
             }
 
             NavigationStack {
+                OrdersView(viewModel: container.makeOrdersViewModel())
+            }
+            .tabItem {
+                Label("History", systemImage: "clock.arrow.circlepath")
+            }
+
+            NavigationStack {
                 SettingsView(environmentName: container.environmentProvider.currentEnvironment.displayName)
             }
             .tabItem {

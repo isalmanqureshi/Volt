@@ -6,6 +6,7 @@ struct AssetDetailView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject var viewModel: AssetDetailViewModel
     @State private var tradeSide: OrderSide?
+    @State private var managePosition: Position?
 
     var body: some View {
         ScrollView {
@@ -13,6 +14,9 @@ struct AssetDetailView: View {
                 header
                 chartCard
                 summaryCard
+                if let position = viewModel.openPosition {
+                    positionCard(position)
+                }
                 tradeActions
             }
             .padding()
@@ -28,6 +32,11 @@ struct AssetDetailView: View {
         .sheet(item: $tradeSide) { side in
             NavigationStack {
                 TradeTicketView(viewModel: container.makeTradeTicketViewModel(asset: viewModel.asset, side: side))
+            }
+        }
+        .sheet(item: $managePosition) { position in
+            NavigationStack {
+                ClosePositionView(viewModel: container.makeClosePositionViewModel(position: position))
             }
         }
     }
@@ -112,6 +121,23 @@ struct AssetDetailView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private func positionCard(_ position: Position) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Your Position")
+                .font(.headline)
+            summaryRow(title: "Open Quantity", value: position.quantity.formatted())
+            summaryRow(title: "Avg Entry", value: position.averageEntryPrice.formatted(.currency(code: "USD")))
+            summaryRow(title: "Unrealized P&L", value: position.unrealizedPnL.formatted(.currency(code: "USD")))
+
+            Button("Sell / Manage Position") {
+                managePosition = position
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var tradeActions: some View {
         HStack(spacing: 12) {
             Button("Buy") {
@@ -120,11 +146,13 @@ struct AssetDetailView: View {
             .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
 
-            Button("Sell") {
-                tradeSide = .sell
+            if viewModel.openPosition == nil {
+                Button("Sell") {
+                    tradeSide = .sell
+                }
+                .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .frame(maxWidth: .infinity)
         }
     }
 
@@ -170,6 +198,7 @@ private extension AssetDetailViewModel {
         let viewModel = AssetDetailViewModel(
             asset: SupportedAssets.demoAssets[0],
             marketDataRepository: repository,
+            portfolioRepository: AssetDetailPreviewPortfolioRepository(position: Position(id: UUID(), symbol: "BTC/USD", quantity: 0.2, averageEntryPrice: 65_000, currentPrice: 68_420, unrealizedPnL: 684, openedAt: .now.addingTimeInterval(-7200))),
             defaultCandleOutputSize: 90
         )
         viewModel.latestQuote = Quote(symbol: "BTC/USD", lastPrice: 68_420, changePercent: 1.34, timestamp: .now, source: "preview", isSimulated: true)
@@ -182,6 +211,7 @@ private extension AssetDetailViewModel {
         let viewModel = AssetDetailViewModel(
             asset: SupportedAssets.demoAssets[1],
             marketDataRepository: AssetDetailPreviewRepository(),
+            portfolioRepository: AssetDetailPreviewPortfolioRepository(position: nil),
             defaultCandleOutputSize: 90
         )
         viewModel.chartState = .loading
@@ -192,11 +222,31 @@ private extension AssetDetailViewModel {
         let viewModel = AssetDetailViewModel(
             asset: SupportedAssets.demoAssets[2],
             marketDataRepository: AssetDetailPreviewRepository(failCandles: true),
+            portfolioRepository: AssetDetailPreviewPortfolioRepository(position: nil),
             defaultCandleOutputSize: 90
         )
         viewModel.latestQuote = Quote(symbol: "SOL/USD", lastPrice: 180.5, changePercent: -2.14, timestamp: .now, source: "preview", isSimulated: true)
         viewModel.chartState = .failed("Preview candle error")
         return viewModel
+    }
+}
+
+private final class AssetDetailPreviewPortfolioRepository: PortfolioRepository {
+    private let positionValue: Position?
+    init(position: Position?) { self.positionValue = position }
+    var positionsPublisher: AnyPublisher<[Position], Never> { Just(positionValue.map { [$0] } ?? []).eraseToAnyPublisher() }
+    var summaryPublisher: AnyPublisher<PortfolioSummary, Never> { Just(.init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0)).eraseToAnyPublisher() }
+    var orderHistoryPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
+    var activityTimelinePublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedPnLPublisher: AnyPublisher<[RealizedPnLEntry], Never> { Just([]).eraseToAnyPublisher() }
+    var currentPositions: [Position] { positionValue.map { [$0] } ?? [] }
+    var currentSummary: PortfolioSummary { .init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0) }
+    var currentOrderHistory: [OrderRecord] { [] }
+    var currentActivityTimeline: [ActivityEvent] { [] }
+    var currentRealizedPnLHistory: [RealizedPnLEntry] { [] }
+    func position(for symbol: String) -> Position? { positionValue?.symbol == symbol ? positionValue : nil }
+    func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> TradeExecutionResult {
+        throw TradingSimulationError.repositoryUnavailable
     }
 }
 
