@@ -80,8 +80,9 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         AppLogger.market.info("Candle fetch started for \(symbol, privacy: .public)")
         do {
             let candles = try await historicalDataProvider.fetchRecentCandles(symbol: symbol, interval: "1min", outputSize: effectiveOutputSize)
+            let sortedCandles = candles.sorted(by: { $0.timestamp < $1.timestamp })
             AppLogger.market.info("Candle fetch succeeded for \(symbol, privacy: .public)")
-            return candles
+            return sortedCandles
         } catch {
             AppLogger.market.error("Candle fetch failed for \(symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
             throw error

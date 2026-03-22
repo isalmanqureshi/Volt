@@ -77,9 +77,9 @@ final class AppContainer: ObservableObject {
         PortfolioViewModel(portfolioRepository: portfolioRepository)
     }
 
-    func makeAssetDetailViewModel(symbol: String) -> AssetDetailViewModel {
+    func makeAssetDetailViewModel(asset: Asset) -> AssetDetailViewModel {
         AssetDetailViewModel(
-            symbol: symbol,
+            asset: asset,
             marketDataRepository: marketDataRepository,
             defaultCandleOutputSize: configuration.defaultCandleOutputSize
         )

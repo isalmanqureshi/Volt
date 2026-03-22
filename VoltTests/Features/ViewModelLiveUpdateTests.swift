@@ -15,6 +15,21 @@ final class ViewModelLiveUpdateTests: XCTestCase {
         XCTAssertEqual(viewModel.rows.first?.isSimulated, true)
     }
 
+
+    func testWatchlistRouteMapsRowToAssetDetailRoute() {
+        let repository = TestMarketDataRepository()
+        let viewModel = WatchlistViewModel(marketDataRepository: repository, assets: SupportedAssets.demoAssets)
+
+        repository.emit(quotes: [Quote(symbol: "BTC/USD", lastPrice: 70_000, changePercent: 1.2, timestamp: .now, source: "seed", isSimulated: false)])
+
+        guard let row = viewModel.rows.first else {
+            return XCTFail("Expected at least one row")
+        }
+
+        let route = viewModel.route(for: row)
+        XCTAssertEqual(route, .assetDetail(asset: SupportedAssets.demoAssets[0]))
+    }
+
     func testPortfolioViewModelReceivesPositionUpdates() {
         let marketRepository = TestMarketDataRepository()
         let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketRepository)

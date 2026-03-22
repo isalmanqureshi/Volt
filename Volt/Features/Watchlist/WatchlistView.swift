@@ -2,7 +2,6 @@ import SwiftUI
 
 struct WatchlistView: View {
     @StateObject var viewModel: WatchlistViewModel
-    let detailViewFactory: (String) -> AssetDetailView
 
     var body: some View {
         Group {
@@ -10,37 +9,17 @@ struct WatchlistView: View {
                 ProgressView("Seeding live prices…")
             } else {
                 List(viewModel.rows) { row in
-                    NavigationLink(value: row.symbol) {
-                        VStack(alignment: .leading) {
-                            HStack {
-                                Text(row.symbol)
-                                    .font(.headline)
-                                Spacer()
-                                Text(row.priceText)
-                                    .font(.title3.monospacedDigit())
-                            }
-                            HStack {
-                                Text(row.name)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(row.changeText)
-                                    .foregroundStyle(row.changeText.hasPrefix("-") ? .red : .green)
-                                    .font(.caption)
-                                if row.isSimulated {
-                                    Label("Sim", systemImage: "waveform.path")
-                                        .font(.caption)
-                                        .foregroundStyle(.orange)
-                                }
-                            }
+                    if let route = viewModel.route(for: row) {
+                        NavigationLink(value: route) {
+                            rowContent(row)
                         }
+                    } else {
+                        rowContent(row)
                     }
                 }
             }
         }
         .navigationTitle("Watchlist")
-        .navigationDestination(for: String.self) { symbol in
-            detailViewFactory(symbol)
-        }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
                 Text("State: \(String(describing: viewModel.connectionState))")
@@ -52,6 +31,32 @@ struct WatchlistView: View {
                         .foregroundStyle(.orange)
                 }
             }.padding(.bottom, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func rowContent(_ row: WatchlistViewModel.RowState) -> some View {
+        VStack(alignment: .leading) {
+            HStack {
+                Text(row.symbol)
+                    .font(.headline)
+                Spacer()
+                Text(row.priceText)
+                    .font(.title3.monospacedDigit())
+            }
+            HStack {
+                Text(row.name)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(row.changeText)
+                    .foregroundStyle(row.changeText.hasPrefix("-") ? .red : .green)
+                    .font(.caption)
+                if row.isSimulated {
+                    Label("Sim", systemImage: "waveform.path")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
         }
     }
 }
