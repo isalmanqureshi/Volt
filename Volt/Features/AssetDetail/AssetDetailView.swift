@@ -3,7 +3,9 @@ import Foundation
 import SwiftUI
 
 struct AssetDetailView: View {
+    @EnvironmentObject private var container: AppContainer
     @StateObject var viewModel: AssetDetailViewModel
+    @State private var tradeSide: OrderSide?
 
     var body: some View {
         ScrollView {
@@ -11,6 +13,7 @@ struct AssetDetailView: View {
                 header
                 chartCard
                 summaryCard
+                tradeActions
             }
             .padding()
         }
@@ -21,6 +24,11 @@ struct AssetDetailView: View {
         }
         .onDisappear {
             viewModel.onDisappear()
+        }
+        .sheet(item: $tradeSide) { side in
+            NavigationStack {
+                TradeTicketView(viewModel: container.makeTradeTicketViewModel(asset: viewModel.asset, side: side))
+            }
         }
     }
 
@@ -104,6 +112,22 @@ struct AssetDetailView: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
+    private var tradeActions: some View {
+        HStack(spacing: 12) {
+            Button("Buy") {
+                tradeSide = .buy
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
+
+            Button("Sell") {
+                tradeSide = .sell
+            }
+            .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
     private func summaryRow(title: String, value: String) -> some View {
         HStack {
             Text(title)
@@ -115,22 +139,29 @@ struct AssetDetailView: View {
     }
 }
 
+extension OrderSide: Identifiable {
+    var id: String { rawValue }
+}
+
 #Preview("Loaded") {
     NavigationStack {
         AssetDetailView(viewModel: .previewLoaded)
     }
+    .environmentObject(AppContainer.bootstrap())
 }
 
 #Preview("Loading") {
     NavigationStack {
         AssetDetailView(viewModel: .previewLoading)
     }
+    .environmentObject(AppContainer.bootstrap())
 }
 
 #Preview("Error") {
     NavigationStack {
         AssetDetailView(viewModel: .previewError)
     }
+    .environmentObject(AppContainer.bootstrap())
 }
 
 private extension AssetDetailViewModel {

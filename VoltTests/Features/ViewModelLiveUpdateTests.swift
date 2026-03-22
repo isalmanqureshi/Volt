@@ -32,8 +32,19 @@ final class ViewModelLiveUpdateTests: XCTestCase {
 
     func testPortfolioViewModelReceivesPositionUpdates() {
         let marketRepository = TestMarketDataRepository()
-        let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketRepository)
+        let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketRepository, cashBalance: 20_000)
         let viewModel = PortfolioViewModel(portfolioRepository: portfolioRepository)
+        let draft = OrderDraft(
+            assetSymbol: "BTC/USD",
+            side: .buy,
+            type: .market,
+            quantity: 0.1,
+            estimatedPrice: 68_000,
+            submittedAt: .now,
+            limitPrice: nil,
+            stopPrice: nil
+        )
+        _ = try? portfolioRepository.applyFilledOrder(draft, executionPrice: 68_000, filledAt: .now)
 
         marketRepository.emit(quotes: [
             Quote(symbol: "BTC/USD", lastPrice: 69_500, changePercent: 0, timestamp: .now, source: "sim", isSimulated: true),
