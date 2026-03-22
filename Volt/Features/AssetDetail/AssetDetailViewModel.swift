@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+internal import os
 
 /// Coordinates seeded historical candles and shared live quote updates for one asset detail screen.
 @MainActor
@@ -12,9 +13,9 @@ final class AssetDetailViewModel: ObservableObject {
         case failed(String)
     }
 
-    @Published private(set) var latestQuote: Quote?
-    @Published private(set) var candles: [Candle] = []
-    @Published private(set) var chartState: ChartState = .idle
+    @Published fileprivate(set) var latestQuote: Quote?
+    @Published fileprivate(set) var candles: [Candle] = []
+    @Published fileprivate(set) var chartState: ChartState = .idle
 
     let asset: Asset
 
