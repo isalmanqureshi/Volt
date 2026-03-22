@@ -13,9 +13,9 @@ final class AssetDetailViewModel: ObservableObject {
         case failed(String)
     }
 
-    @Published fileprivate(set) var latestQuote: Quote?
-    @Published fileprivate(set) var candles: [Candle] = []
-    @Published fileprivate(set) var chartState: ChartState = .idle
+    @Published var latestQuote: Quote?
+    @Published var candles: [Candle] = []
+    @Published var chartState: ChartState = .idle
 
     let asset: Asset
 
@@ -64,8 +64,8 @@ final class AssetDetailViewModel: ObservableObject {
         guard hasStarted == false else { return }
         hasStarted = true
 
-        AppLogger.market.info("Asset detail opened for \(asset.symbol, privacy: .public)")
-        AppLogger.market.debug("Asset detail quote subscription started for \(asset.symbol, privacy: .public)")
+        AppLogger.market.info("Asset detail opened for \(self.asset.symbol, privacy: .public)")
+        AppLogger.market.debug("Asset detail quote subscription started for \(self.asset.symbol, privacy: .public)")
 
         quoteCancellable = marketDataRepository.quotePublisher(for: asset.symbol)
             .receive(on: RunLoop.main)
@@ -80,7 +80,7 @@ final class AssetDetailViewModel: ObservableObject {
 
 
     func onDisappear() {
-        AppLogger.market.debug("Asset detail quote subscription stopped for \(asset.symbol, privacy: .public)")
+        AppLogger.market.debug("Asset detail quote subscription stopped for \(self.asset.symbol, privacy: .public)")
         quoteCancellable?.cancel()
         candleTask?.cancel()
         hasStarted = false
@@ -89,7 +89,7 @@ final class AssetDetailViewModel: ObservableObject {
     func loadCandlesIfNeeded() async {
         guard candles.isEmpty else { return }
         chartState = .loading
-        AppLogger.market.info("Asset detail candle fetch started for \(asset.symbol, privacy: .public)")
+        AppLogger.market.info("Asset detail candle fetch started for \(self.asset.symbol, privacy: .public)")
 
         do {
             let fetched = try await marketDataRepository.fetchRecentCandles(
@@ -99,10 +99,10 @@ final class AssetDetailViewModel: ObservableObject {
             let sorted = fetched.sorted(by: { $0.timestamp < $1.timestamp })
             candles = sorted
             chartState = sorted.isEmpty ? .empty : .loaded
-            AppLogger.market.info("Asset detail candle fetch succeeded for \(asset.symbol, privacy: .public): \(sorted.count, privacy: .public) bars")
+            AppLogger.market.info("Asset detail candle fetch succeeded for \(self.asset.symbol, privacy: .public): \(sorted.count, privacy: .public) bars")
         } catch {
             chartState = .failed(error.localizedDescription)
-            AppLogger.market.error("Asset detail candle fetch failed for \(asset.symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            AppLogger.market.error("Asset detail candle fetch failed for \(self.asset.symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 }
