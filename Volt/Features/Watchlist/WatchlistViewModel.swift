@@ -19,12 +19,16 @@ final class WatchlistViewModel: ObservableObject {
 
     private let marketDataRepository: MarketDataRepository
     private let assetsBySymbol: [String: Asset]
-    private var cancellables = Set<AnyCancellable>()
 
     init(marketDataRepository: MarketDataRepository, assets: [Asset]) {
         self.marketDataRepository = marketDataRepository
         self.assetsBySymbol = Dictionary(uniqueKeysWithValues: assets.map { ($0.symbol, $0) })
         bind()
+    }
+
+    func route(for row: RowState) -> AppRoute? {
+        guard let asset = assetsBySymbol[row.symbol] else { return nil }
+        return .assetDetail(asset: asset)
     }
 
     private func bind() {

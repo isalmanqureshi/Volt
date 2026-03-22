@@ -6,12 +6,13 @@ struct RootTabView: View {
     var body: some View {
         TabView {
             NavigationStack {
-                WatchlistView(
-                    viewModel: container.makeWatchlistViewModel(),
-                    detailViewFactory: { symbol in
-                        AssetDetailView(viewModel: container.makeAssetDetailViewModel(symbol: symbol))
+                WatchlistView(viewModel: container.makeWatchlistViewModel())
+                    .navigationDestination(for: AppRoute.self) { route in
+                        switch route {
+                        case .assetDetail(let asset):
+                            AssetDetailView(viewModel: container.makeAssetDetailViewModel(asset: asset))
+                        }
                     }
-                )
             }
             .tabItem {
                 Label("Watchlist", systemImage: "chart.line.uptrend.xyaxis")

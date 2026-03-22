@@ -1,38 +1,108 @@
 import Combine
 import Foundation
+internal import os
 
+/// Coordinates seeded historical candles and shared live quote updates for one asset detail screen.
 @MainActor
 final class AssetDetailViewModel: ObservableObject {
-    @Published private(set) var latestQuote: Quote?
-    @Published private(set) var candles: [Candle] = []
-    @Published private(set) var errorMessage: String?
-    @Published private(set) var isLoadingCandles = false
+    enum ChartState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case empty
+        case failed(String)
+    }
 
-    let symbol: String
+    @Published var latestQuote: Quote?
+    @Published var candles: [Candle] = []
+    @Published var chartState: ChartState = .idle
+
+    let asset: Asset
+
+    var currentPriceText: String {
+        guard let quote = latestQuote else { return "--" }
+        return quote.lastPrice.formatted(.number.precision(.fractionLength(0...asset.pricePrecision)))
+    }
+
+    var changeText: String {
+        guard let quote = latestQuote else { return "--" }
+        return "\(quote.changePercent.formatted(.number.precision(.fractionLength(2))))%"
+    }
+
+    var isPriceUp: Bool {
+        guard let quote = latestQuote else { return true }
+        return quote.changePercent >= 0
+    }
+
+    var liveStatusText: String {
+        latestQuote?.isSimulated == true ? "Simulated Live" : "Seeded"
+    }
+
+    var lastUpdatedText: String {
+        guard let timestamp = latestQuote?.timestamp else { return "--" }
+        return timestamp.formatted(date: .omitted, time: .standard)
+    }
+
+    var canRenderChart: Bool {
+        !candles.isEmpty
+    }
 
     private let marketDataRepository: MarketDataRepository
     private let defaultCandleOutputSize: Int
-    private var cancellables = Set<AnyCancellable>()
+    private var quoteCancellable: AnyCancellable?
+    private var candleTask: Task<Void, Never>?
+    private var hasStarted = false
 
-    init(symbol: String, marketDataRepository: MarketDataRepository, defaultCandleOutputSize: Int) {
-        self.symbol = symbol
+    init(asset: Asset, marketDataRepository: MarketDataRepository, defaultCandleOutputSize: Int) {
+        self.asset = asset
         self.marketDataRepository = marketDataRepository
         self.defaultCandleOutputSize = defaultCandleOutputSize
+    }
 
-        marketDataRepository.quotePublisher(for: symbol)
+
+    func onAppear() {
+        guard hasStarted == false else { return }
+        hasStarted = true
+
+        AppLogger.market.info("Asset detail opened for \(self.asset.symbol, privacy: .public)")
+        AppLogger.market.debug("Asset detail quote subscription started for \(self.asset.symbol, privacy: .public)")
+
+        quoteCancellable = marketDataRepository.quotePublisher(for: asset.symbol)
             .receive(on: RunLoop.main)
-            .assign(to: &$latestQuote)
+            .sink { [weak self] quote in
+                self?.latestQuote = quote
+            }
+
+        candleTask = Task { [weak self] in
+            await self?.loadCandlesIfNeeded()
+        }
+    }
+
+
+    func onDisappear() {
+        AppLogger.market.debug("Asset detail quote subscription stopped for \(self.asset.symbol, privacy: .public)")
+        quoteCancellable?.cancel()
+        candleTask?.cancel()
+        hasStarted = false
     }
 
     func loadCandlesIfNeeded() async {
         guard candles.isEmpty else { return }
-        isLoadingCandles = true
-        defer { isLoadingCandles = false }
+        chartState = .loading
+        AppLogger.market.info("Asset detail candle fetch started for \(self.asset.symbol, privacy: .public)")
+
         do {
-            candles = try await marketDataRepository.fetchRecentCandles(symbol: symbol, outputSize: defaultCandleOutputSize)
-            errorMessage = nil
+            let fetched = try await marketDataRepository.fetchRecentCandles(
+                symbol: asset.symbol,
+                outputSize: defaultCandleOutputSize
+            )
+            let sorted = fetched.sorted(by: { $0.timestamp < $1.timestamp })
+            candles = sorted
+            chartState = sorted.isEmpty ? .empty : .loaded
+            AppLogger.market.info("Asset detail candle fetch succeeded for \(self.asset.symbol, privacy: .public): \(sorted.count, privacy: .public) bars")
         } catch {
-            errorMessage = error.localizedDescription
+            chartState = .failed(error.localizedDescription)
+            AppLogger.market.error("Asset detail candle fetch failed for \(self.asset.symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
         }
     }
 }
