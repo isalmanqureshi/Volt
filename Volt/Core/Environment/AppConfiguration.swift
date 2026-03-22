@@ -8,6 +8,7 @@ struct AppConfiguration: Sendable {
     let enabledAssets: [Asset]
     let defaultCandleOutputSize: Int
     let simulationConfig: PriceSimulationConfig
+    let demoInitialCashBalance: Decimal
 
     static func current(processInfo: ProcessInfo = .processInfo) -> AppConfiguration {
         let selectedEnvironment = TradingEnvironment(rawValue: processInfo.environment["VOLT_ENV"] ?? "") ?? .twelveDataSeededSimulation
@@ -23,7 +24,8 @@ struct AppConfiguration: Sendable {
             twelveDataAPIKey: (apiKey?.isEmpty == true) ? nil : apiKey,
             enabledAssets: configuredSymbols,
             defaultCandleOutputSize: 90,
-            simulationConfig: .default
+            simulationConfig: .default,
+            demoInitialCashBalance: 50_000
         )
     }
 }

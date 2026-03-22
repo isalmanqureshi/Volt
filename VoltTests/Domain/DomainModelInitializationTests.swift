@@ -3,7 +3,16 @@ import XCTest
 
 final class DomainModelInitializationTests: XCTestCase {
     func testOrderDraftInitialization() {
-        let draft = OrderDraft(assetSymbol: "BTC/USD", side: .buy, type: .limit, quantity: 1.5, limitPrice: 60_000, stopPrice: nil)
+        let draft = OrderDraft(
+            assetSymbol: "BTC/USD",
+            side: .buy,
+            type: .limit,
+            quantity: 1.5,
+            estimatedPrice: 61_000,
+            submittedAt: .now,
+            limitPrice: 60_000,
+            stopPrice: nil
+        )
         XCTAssertEqual(draft.assetSymbol, "BTC/USD")
         XCTAssertEqual(draft.side, .buy)
         XCTAssertEqual(draft.type, .limit)

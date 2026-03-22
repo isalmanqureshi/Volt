@@ -1,3 +1,5 @@
+import Combine
+import Foundation
 import SwiftUI
 
 struct PortfolioView: View {
@@ -42,5 +44,48 @@ struct PortfolioView: View {
             }
         }
         .navigationTitle("Portfolio")
+    }
+}
+
+#Preview("Empty") {
+    NavigationStack {
+        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.empty))
+    }
+}
+
+#Preview("With Positions") {
+    NavigationStack {
+        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.withPositions))
+    }
+}
+
+private final class PortfolioPreviewRepository: PortfolioRepository {
+    static let empty = PortfolioPreviewRepository(
+        summary: PortfolioSummary(cashBalance: 50_000, positionsMarketValue: 0, unrealizedPnL: 0, totalEquity: 50_000, dayChange: 0),
+        positions: []
+    )
+    static let withPositions = PortfolioPreviewRepository(
+        summary: PortfolioSummary(cashBalance: 32_000, positionsMarketValue: 21_000, unrealizedPnL: 420, totalEquity: 53_000, dayChange: 0),
+        positions: [
+            Position(id: UUID(), symbol: "BTC/USD", quantity: 0.15, averageEntryPrice: 67_000, currentPrice: 68_800, unrealizedPnL: 270, openedAt: .now.addingTimeInterval(-3_600)),
+            Position(id: UUID(), symbol: "ETH/USD", quantity: 2.0, averageEntryPrice: 3_200, currentPrice: 3_275, unrealizedPnL: 150, openedAt: .now.addingTimeInterval(-7_200))
+        ]
+    )
+
+    private let summary: PortfolioSummary
+    private let positions: [Position]
+
+    private init(summary: PortfolioSummary, positions: [Position]) {
+        self.summary = summary
+        self.positions = positions
+    }
+
+    var positionsPublisher: AnyPublisher<[Position], Never> { Just(positions).eraseToAnyPublisher() }
+    var summaryPublisher: AnyPublisher<PortfolioSummary, Never> { Just(summary).eraseToAnyPublisher() }
+    var currentPositions: [Position] { positions }
+    var currentSummary: PortfolioSummary { summary }
+
+    func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> Position {
+        Position(id: UUID(), symbol: draft.assetSymbol, quantity: draft.quantity, averageEntryPrice: executionPrice, currentPrice: executionPrice, unrealizedPnL: 0, openedAt: filledAt)
     }
 }

@@ -51,8 +51,15 @@ final class AppContainer: ObservableObject {
             symbols: configuration.enabledAssets.map(\.symbol),
             defaultCandleOutputSize: configuration.defaultCandleOutputSize
         )
-        let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketDataRepository)
-        let tradingSimulationService = DefaultTradingSimulationService()
+        let portfolioRepository = InMemoryPortfolioRepository(
+            marketDataRepository: marketDataRepository,
+            cashBalance: configuration.demoInitialCashBalance
+        )
+        let tradingSimulationService = DefaultTradingSimulationService(
+            marketDataRepository: marketDataRepository,
+            portfolioRepository: portfolioRepository,
+            supportedSymbols: configuration.enabledAssets.map(\.symbol)
+        )
 
         let container = AppContainer(
             environmentProvider: environmentProvider,
@@ -82,6 +89,16 @@ final class AppContainer: ObservableObject {
             asset: asset,
             marketDataRepository: marketDataRepository,
             defaultCandleOutputSize: configuration.defaultCandleOutputSize
+        )
+    }
+
+    func makeTradeTicketViewModel(asset: Asset, side: OrderSide) -> TradeTicketViewModel {
+        TradeTicketViewModel(
+            asset: asset,
+            side: side,
+            marketDataRepository: marketDataRepository,
+            portfolioRepository: portfolioRepository,
+            tradingSimulationService: tradingSimulationService
         )
     }
 }

@@ -37,7 +37,19 @@ final class Milestone2RepositoryAndPortfolioTests: XCTestCase {
 
     func testPortfolioRecalculatesUnrealizedPnLFromQuotes() async {
         let market = PassthroughMarketRepository()
-        let repository = InMemoryPortfolioRepository(marketDataRepository: market)
+        let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 10_000)
+
+        let draft = OrderDraft(
+            assetSymbol: "BTC/USD",
+            side: .buy,
+            type: .market,
+            quantity: 0.1,
+            estimatedPrice: 67_000,
+            submittedAt: .now,
+            limitPrice: nil,
+            stopPrice: nil
+        )
+        _ = try? repository.applyFilledOrder(draft, executionPrice: 67_000, filledAt: .now)
 
         market.push(quotes: [
             Quote(symbol: "BTC/USD", lastPrice: 68_000, changePercent: 0, timestamp: .now, source: "test", isSimulated: true),
