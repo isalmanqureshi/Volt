@@ -33,6 +33,13 @@ struct RootTabView: View {
             }
 
             NavigationStack {
+                AnalyticsView(viewModel: container.makeAnalyticsViewModel())
+            }
+            .tabItem {
+                Label("Analytics", systemImage: "chart.bar.xaxis")
+            }
+
+            NavigationStack {
                 SettingsView(environmentName: container.environmentProvider.currentEnvironment.displayName)
             }
             .tabItem {
