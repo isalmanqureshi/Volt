@@ -19,7 +19,7 @@ final class DomainModelInitializationTests: XCTestCase {
     }
 
     func testPortfolioSummaryCalculationShape() {
-        let summary = PortfolioSummary(cashBalance: 10_000, positionsMarketValue: 1_000, unrealizedPnL: 150, totalEquity: 11_000, dayChange: 100)
+        let summary = PortfolioSummary(cashBalance: 10_000, positionsMarketValue: 1_000, unrealizedPnL: 150, realizedPnL: 50, totalEquity: 11_000, dayChange: 100)
         XCTAssertEqual(summary.totalEquity, 11_000)
     }
 }

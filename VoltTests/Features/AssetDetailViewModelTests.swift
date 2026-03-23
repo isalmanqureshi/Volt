@@ -7,7 +7,7 @@ final class AssetDetailViewModelTests: XCTestCase {
     func testLoadsCandlesSortedChronologically() async {
         let repository = AssetDetailTestRepository()
         let asset = SupportedAssets.demoAssets[0]
-        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, defaultCandleOutputSize: 3)
+        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, portfolioRepository: AssetDetailPortfolioStub(), defaultCandleOutputSize: 3)
 
         viewModel.onAppear()
         await Task.yield()
@@ -19,7 +19,7 @@ final class AssetDetailViewModelTests: XCTestCase {
     func testLatestQuoteUpdatesPropagateToDetailState() {
         let repository = AssetDetailTestRepository()
         let asset = SupportedAssets.demoAssets[0]
-        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, defaultCandleOutputSize: 3)
+        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, portfolioRepository: AssetDetailPortfolioStub(), defaultCandleOutputSize: 3)
 
         viewModel.onAppear()
 
@@ -34,7 +34,7 @@ final class AssetDetailViewModelTests: XCTestCase {
     func testCandleFetchFailureStillShowsQuoteState() async {
         let repository = AssetDetailTestRepository(candleError: URLError(.cannotLoadFromNetwork))
         let asset = SupportedAssets.demoAssets[1]
-        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, defaultCandleOutputSize: 3)
+        let viewModel = AssetDetailViewModel(asset: asset, marketDataRepository: repository, portfolioRepository: AssetDetailPortfolioStub(), defaultCandleOutputSize: 3)
 
         viewModel.onAppear()
         repository.push(
@@ -101,4 +101,20 @@ private final class AssetDetailTestRepository: MarketDataRepository {
         quotes.append(quote)
         quoteSubject.send(quotes)
     }
+}
+
+
+private struct AssetDetailPortfolioStub: PortfolioRepository {
+    var positionsPublisher: AnyPublisher<[Position], Never> { Just([]).eraseToAnyPublisher() }
+    var summaryPublisher: AnyPublisher<PortfolioSummary, Never> { Just(.init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0)).eraseToAnyPublisher() }
+    var orderHistoryPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
+    var activityTimelinePublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedPnLPublisher: AnyPublisher<[RealizedPnLEntry], Never> { Just([]).eraseToAnyPublisher() }
+    var currentPositions: [Position] { [] }
+    var currentSummary: PortfolioSummary { .init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0) }
+    var currentOrderHistory: [OrderRecord] { [] }
+    var currentActivityTimeline: [ActivityEvent] { [] }
+    var currentRealizedPnLHistory: [RealizedPnLEntry] { [] }
+    func position(for symbol: String) -> Position? { nil }
+    func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> TradeExecutionResult { throw TradingSimulationError.repositoryUnavailable }
 }

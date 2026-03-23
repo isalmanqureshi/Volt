@@ -20,7 +20,7 @@ final class DefaultTradingSimulationService: TradingSimulationService {
     }
 
     @discardableResult
-    func placeOrder(_ draft: OrderDraft) throws -> Position {
+    func placeOrder(_ draft: OrderDraft) throws -> TradeExecutionResult {
         AppLogger.portfolio.info("Order submitted: \(draft.assetSymbol, privacy: .public) \(String(describing: draft.side), privacy: .public) qty=\(draft.quantity.description, privacy: .public)")
 
         guard draft.quantity > 0 else {
@@ -31,15 +31,25 @@ final class DefaultTradingSimulationService: TradingSimulationService {
             AppLogger.portfolio.error("Order validation failed: unsupported symbol \(draft.assetSymbol, privacy: .public)")
             throw TradingSimulationError.unsupportedAsset(symbol: draft.assetSymbol)
         }
+
+        if draft.side == .sell {
+            guard let existingPosition = portfolioRepository.position(for: draft.assetSymbol) else {
+                throw TradingSimulationError.missingPosition(symbol: draft.assetSymbol)
+            }
+            guard draft.quantity <= existingPosition.quantity else {
+                throw TradingSimulationError.closeQuantityExceedsOpenQuantity(symbol: draft.assetSymbol)
+            }
+        }
+
         guard let quote = marketDataRepository.quote(for: draft.assetSymbol) else {
             AppLogger.portfolio.error("Order validation failed: missing quote \(draft.assetSymbol, privacy: .public)")
             throw TradingSimulationError.missingQuote(symbol: draft.assetSymbol)
         }
 
         let executionPrice = applySlippage(to: quote.lastPrice, side: draft.side)
-        let position = try portfolioRepository.applyFilledOrder(draft, executionPrice: executionPrice, filledAt: draft.submittedAt)
+        let result = try portfolioRepository.applyFilledOrder(draft, executionPrice: executionPrice, filledAt: draft.submittedAt)
         AppLogger.portfolio.info("Order filled locally: \(draft.assetSymbol, privacy: .public) at \(executionPrice.description, privacy: .public)")
-        return position
+        return result
     }
 
     private func applySlippage(to price: Decimal, side: OrderSide) -> Decimal {

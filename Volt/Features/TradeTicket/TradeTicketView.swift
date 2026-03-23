@@ -259,19 +259,32 @@ private final class TradeTicketPreviewMarketDataRepository: MarketDataRepository
 private final class TradeTicketPreviewPortfolioRepository: PortfolioRepository {
     let summarySubject: CurrentValueSubject<PortfolioSummary, Never>
     init(cash: Decimal) {
-        summarySubject = CurrentValueSubject(.init(cashBalance: cash, positionsMarketValue: 0, unrealizedPnL: 0, totalEquity: cash, dayChange: 0))
+        summarySubject = CurrentValueSubject(.init(cashBalance: cash, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: cash, dayChange: 0))
     }
     var positionsPublisher: AnyPublisher<[Position], Never> { Just([]).eraseToAnyPublisher() }
     var summaryPublisher: AnyPublisher<PortfolioSummary, Never> { summarySubject.eraseToAnyPublisher() }
+    var orderHistoryPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
+    var activityTimelinePublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedPnLPublisher: AnyPublisher<[RealizedPnLEntry], Never> { Just([]).eraseToAnyPublisher() }
     var currentPositions: [Position] { [] }
     var currentSummary: PortfolioSummary { summarySubject.value }
-    func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> Position {
-        Position(id: UUID(), symbol: draft.assetSymbol, quantity: draft.quantity, averageEntryPrice: executionPrice, currentPrice: executionPrice, unrealizedPnL: 0, openedAt: filledAt)
+    var currentOrderHistory: [OrderRecord] { [] }
+    var currentActivityTimeline: [ActivityEvent] { [] }
+    var currentRealizedPnLHistory: [RealizedPnLEntry] { [] }
+    func position(for symbol: String) -> Position? { nil }
+    func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> TradeExecutionResult {
+        let position = Position(id: UUID(), symbol: draft.assetSymbol, quantity: draft.quantity, averageEntryPrice: executionPrice, currentPrice: executionPrice, unrealizedPnL: 0, openedAt: filledAt)
+        let order = OrderRecord(id: UUID(), symbol: draft.assetSymbol, side: draft.side, type: draft.type, quantity: draft.quantity, executedPrice: executionPrice, grossValue: executionPrice * draft.quantity, submittedAt: filledAt, executedAt: filledAt, status: .filled, source: .simulated, linkedPositionID: position.id)
+        let event = ActivityEvent(id: UUID(), kind: .buy, symbol: draft.assetSymbol, quantity: draft.quantity, price: executionPrice, timestamp: filledAt, orderID: order.id, relatedPositionID: position.id, realizedPnL: nil)
+        return TradeExecutionResult(resultingPosition: position, orderRecord: order, activityEvent: event, realizedPnLEntry: nil)
     }
 }
 
 private struct TradeTicketPreviewTradingService: TradingSimulationService {
-    func placeOrder(_ draft: OrderDraft) throws -> Position {
-        Position(id: UUID(), symbol: draft.assetSymbol, quantity: draft.quantity, averageEntryPrice: draft.estimatedPrice ?? 0, currentPrice: draft.estimatedPrice ?? 0, unrealizedPnL: 0, openedAt: draft.submittedAt)
+    func placeOrder(_ draft: OrderDraft) throws -> TradeExecutionResult {
+        let position = Position(id: UUID(), symbol: draft.assetSymbol, quantity: draft.quantity, averageEntryPrice: draft.estimatedPrice ?? 0, currentPrice: draft.estimatedPrice ?? 0, unrealizedPnL: 0, openedAt: draft.submittedAt)
+        let order = OrderRecord(id: UUID(), symbol: draft.assetSymbol, side: draft.side, type: draft.type, quantity: draft.quantity, executedPrice: draft.estimatedPrice ?? 0, grossValue: (draft.estimatedPrice ?? 0) * draft.quantity, submittedAt: draft.submittedAt, executedAt: draft.submittedAt, status: .filled, source: .simulated, linkedPositionID: position.id)
+        let event = ActivityEvent(id: UUID(), kind: .buy, symbol: draft.assetSymbol, quantity: draft.quantity, price: draft.estimatedPrice ?? 0, timestamp: draft.submittedAt, orderID: order.id, relatedPositionID: position.id, realizedPnL: nil)
+        return TradeExecutionResult(resultingPosition: position, orderRecord: order, activityEvent: event, realizedPnLEntry: nil)
     }
 }
