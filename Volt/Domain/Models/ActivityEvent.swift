@@ -1,7 +1,7 @@
 import Foundation
 
 struct ActivityEvent: Identifiable, Equatable, Codable, Sendable {
-    enum Kind: String, Codable, Sendable {
+    enum Kind: String, Codable, Sendable, CaseIterable {
         case buy
         case sell
         case partialClose

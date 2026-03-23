@@ -33,22 +33,37 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
         persistenceStore: PortfolioPersistenceStore? = nil
     ) {
         self.persistenceStore = persistenceStore
-
-        if let persistenceStore, let restoredState = try? persistenceStore.loadState() {
-            self.cashBalance = restoredState.cashBalance
-            self.positionsSubject = CurrentValueSubject(restoredState.openPositions)
-            self.orderHistorySubject = CurrentValueSubject(restoredState.orderHistory)
-            self.activityTimelineSubject = CurrentValueSubject(restoredState.activityTimeline)
-            self.realizedPnLSubject = CurrentValueSubject(restoredState.realizedPnLHistory)
-        } else {
-            if persistenceStore != nil {
+        let defaultState = Self.defaultState(cashBalance: cashBalance, initialPositions: initialPositions)
+        if let persistenceStore {
+            do {
+                if let restoredState = try persistenceStore.loadState() {
+                    self.cashBalance = restoredState.cashBalance
+                    self.positionsSubject = CurrentValueSubject(restoredState.openPositions)
+                    self.orderHistorySubject = CurrentValueSubject(restoredState.orderHistory)
+                    self.activityTimelineSubject = CurrentValueSubject(restoredState.activityTimeline)
+                    self.realizedPnLSubject = CurrentValueSubject(restoredState.realizedPnLHistory)
+                } else {
+                    self.cashBalance = defaultState.cashBalance
+                    self.positionsSubject = CurrentValueSubject(defaultState.positions)
+                    self.orderHistorySubject = CurrentValueSubject(defaultState.orders)
+                    self.activityTimelineSubject = CurrentValueSubject(defaultState.activity)
+                    self.realizedPnLSubject = CurrentValueSubject(defaultState.realizedHistory)
+                }
+            } catch {
+                AppLogger.portfolio.error("Persistence load failed; recovering with default state")
+                self.cashBalance = defaultState.cashBalance
+                self.positionsSubject = CurrentValueSubject(defaultState.positions)
+                self.orderHistorySubject = CurrentValueSubject(defaultState.orders)
+                self.activityTimelineSubject = CurrentValueSubject(defaultState.activity)
+                self.realizedPnLSubject = CurrentValueSubject(defaultState.realizedHistory)
                 AppLogger.portfolio.warning("Recovered with default portfolio state")
             }
-            self.cashBalance = cashBalance
-            self.positionsSubject = CurrentValueSubject(initialPositions)
-            self.orderHistorySubject = CurrentValueSubject([])
-            self.activityTimelineSubject = CurrentValueSubject([])
-            self.realizedPnLSubject = CurrentValueSubject([])
+        } else {
+            self.cashBalance = defaultState.cashBalance
+            self.positionsSubject = CurrentValueSubject(defaultState.positions)
+            self.orderHistorySubject = CurrentValueSubject(defaultState.orders)
+            self.activityTimelineSubject = CurrentValueSubject(defaultState.activity)
+            self.realizedPnLSubject = CurrentValueSubject(defaultState.realizedHistory)
         }
 
         self.summarySubject = CurrentValueSubject(
@@ -346,5 +361,21 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
 
     static func realizedPnL(quantityClosed: Decimal, averageEntryPrice: Decimal, exitPrice: Decimal) -> Decimal {
         (exitPrice - averageEntryPrice) * quantityClosed
+    }
+
+    private static func defaultState(cashBalance: Decimal, initialPositions: [Position]) -> (
+        cashBalance: Decimal,
+        positions: [Position],
+        orders: [OrderRecord],
+        realizedHistory: [RealizedPnLEntry],
+        activity: [ActivityEvent]
+    ) {
+        (
+            cashBalance: cashBalance,
+            positions: initialPositions,
+            orders: [],
+            realizedHistory: [],
+            activity: []
+        )
     }
 }

@@ -17,6 +17,18 @@ struct PortfolioView: View {
                 LabeledContent("Position Value", value: viewModel.summary.positionsMarketValue.formatted(.currency(code: "USD")))
             }
 
+            Section("Analytics Snapshot") {
+                LabeledContent("Closed Trades", value: String(viewModel.analyticsSummary.totalClosedTrades))
+                LabeledContent("Win Rate", value: percent(viewModel.analyticsSummary.winRate))
+                LabeledContent("Avg Win", value: currency(viewModel.analyticsSummary.averageWin))
+                LabeledContent("Avg Loss", value: currency(viewModel.analyticsSummary.averageLoss))
+                LabeledContent("Net Return", value: percent(viewModel.analyticsSummary.netReturnPercent))
+
+                NavigationLink("Open Full Analytics") {
+                    AnalyticsView(viewModel: container.makeAnalyticsViewModel())
+                }
+            }
+
             Section("Open Positions") {
                 if viewModel.positions.isEmpty {
                     Text("No open positions yet")
@@ -45,6 +57,11 @@ struct PortfolioView: View {
                                 managePosition = position
                             }
                             .buttonStyle(.bordered)
+
+                            NavigationLink("View Position History") {
+                                PositionHistoryView(viewModel: container.makePositionHistoryViewModel(symbol: position.symbol))
+                            }
+                            .font(.caption)
                         }
                         .padding(.vertical, 4)
                     }
@@ -86,18 +103,30 @@ struct PortfolioView: View {
             }
         }
     }
+
+    private func percent(_ value: Decimal?) -> String {
+        guard let value else { return "--" }
+        return "\(value.formatted(.number.precision(.fractionLength(2))))%"
+    }
+
+    private func currency(_ value: Decimal?) -> String {
+        guard let value else { return "--" }
+        return value.formatted(.currency(code: "USD"))
+    }
 }
 
 #Preview("Empty") {
     NavigationStack {
-        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.empty))
+        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.empty, analyticsService: PortfolioPreviewAnalyticsService.empty))
     }
+    .environmentObject(AppContainer.bootstrap())
 }
 
 #Preview("With Positions") {
     NavigationStack {
-        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.withPositions))
+        PortfolioView(viewModel: PortfolioViewModel(portfolioRepository: PortfolioPreviewRepository.withPositions, analyticsService: PortfolioPreviewAnalyticsService.populated))
     }
+    .environmentObject(AppContainer.bootstrap())
 }
 
 private final class PortfolioPreviewRepository: PortfolioRepository {
@@ -148,4 +177,22 @@ private final class PortfolioPreviewRepository: PortfolioRepository {
         let event = ActivityEvent(id: UUID(), kind: .buy, symbol: draft.assetSymbol, quantity: draft.quantity, price: executionPrice, timestamp: filledAt, orderID: order.id, relatedPositionID: position.id, realizedPnL: nil)
         return TradeExecutionResult(resultingPosition: position, orderRecord: order, activityEvent: event, realizedPnLEntry: nil)
     }
+}
+
+private final class PortfolioPreviewAnalyticsService: PortfolioAnalyticsService {
+    static let populated = PortfolioPreviewAnalyticsService(summary: PortfolioAnalyticsSummary(totalRealizedPnL: 860, totalUnrealizedPnL: 420, averageWin: 180, averageLoss: -90, profitFactor: 2.0, winRate: 0.66, totalClosedTrades: 12, bestTrade: 420, worstTrade: -210, currentEquity: 53_000, startingBalance: 50_000, netReturnPercent: 6))
+    static let empty = PortfolioPreviewAnalyticsService(summary: .empty)
+    private let summaryValue: PortfolioAnalyticsSummary
+    private let filterSubject = CurrentValueSubject<HistoryFilter, Never>(.default)
+    init(summary: PortfolioAnalyticsSummary) { summaryValue = summary }
+    var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { Just(summaryValue).eraseToAnyPublisher() }
+    var performancePublisher: AnyPublisher<[PerformancePoint], Never> { Just([]).eraseToAnyPublisher() }
+    var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
+    var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
+    var availableSymbolsPublisher: AnyPublisher<[String], Never> { Just(["BTC/USD"]).eraseToAnyPublisher() }
+    var currentSummary: PortfolioAnalyticsSummary { summaryValue }
+    var currentPerformance: [PerformancePoint] { [] }
+    var currentFilter: HistoryFilter { filterSubject.value }
+    func updateFilter(_ filter: HistoryFilter) { filterSubject.send(filter) }
+    func positionHistory(symbol: String) -> PositionHistorySummary { .empty(symbol: symbol) }
 }

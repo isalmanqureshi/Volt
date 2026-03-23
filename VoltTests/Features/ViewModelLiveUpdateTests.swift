@@ -33,7 +33,8 @@ final class ViewModelLiveUpdateTests: XCTestCase {
     func testPortfolioViewModelReceivesPositionUpdates() {
         let marketRepository = TestMarketDataRepository()
         let portfolioRepository = InMemoryPortfolioRepository(marketDataRepository: marketRepository, cashBalance: 20_000)
-        let viewModel = PortfolioViewModel(portfolioRepository: portfolioRepository)
+        let analyticsService = DefaultPortfolioAnalyticsService(repository: portfolioRepository)
+        let viewModel = PortfolioViewModel(portfolioRepository: portfolioRepository, analyticsService: analyticsService)
         let draft = OrderDraft(
             assetSymbol: "BTC/USD",
             side: .buy,

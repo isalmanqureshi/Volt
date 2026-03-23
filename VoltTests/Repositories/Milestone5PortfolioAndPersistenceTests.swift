@@ -112,6 +112,32 @@ final class Milestone5PortfolioAndPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.currentPositions.first?.currentPrice, 120)
         XCTAssertEqual(restored.currentSummary.unrealizedPnL, 20)
     }
+
+    func testRealizedPnLFormulaForReducedLongPosition() throws {
+        let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
+        let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 10_000)
+
+        _ = try repository.applyFilledOrder(.init(assetSymbol: "BTC/USD", side: .buy, type: .market, quantity: 3, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil), executionPrice: 100, filledAt: .now)
+        _ = try repository.applyFilledOrder(.init(assetSymbol: "BTC/USD", side: .sell, type: .market, quantity: 1.2, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil), executionPrice: 108, filledAt: .now)
+
+        XCTAssertEqual(repository.currentRealizedPnLHistory.first?.realizedPnL, 9.6)
+    }
+
+    func testPortfolioSummaryRemainsCoherentAfterBuyReduceAndFullClose() throws {
+        let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
+        let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 1_000)
+
+        _ = try repository.applyFilledOrder(.init(assetSymbol: "BTC/USD", side: .buy, type: .market, quantity: 5, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil), executionPrice: 100, filledAt: .now)
+        _ = try repository.applyFilledOrder(.init(assetSymbol: "BTC/USD", side: .sell, type: .market, quantity: 2, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil), executionPrice: 110, filledAt: .now)
+        _ = try repository.applyFilledOrder(.init(assetSymbol: "BTC/USD", side: .sell, type: .market, quantity: 3, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil), executionPrice: 90, filledAt: .now)
+
+        XCTAssertTrue(repository.currentPositions.isEmpty)
+        XCTAssertEqual(repository.currentSummary.cashBalance, 990)
+        XCTAssertEqual(repository.currentSummary.positionsMarketValue, 0)
+        XCTAssertEqual(repository.currentSummary.unrealizedPnL, 0)
+        XCTAssertEqual(repository.currentSummary.realizedPnL, -10)
+        XCTAssertEqual(repository.currentSummary.totalEquity, 990)
+    }
 }
 
 private struct FailingPortfolioPersistenceStore: PortfolioPersistenceStore {

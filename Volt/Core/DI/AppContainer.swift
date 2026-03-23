@@ -8,19 +8,25 @@ final class AppContainer: ObservableObject {
     let marketDataRepository: MarketDataRepository
     let portfolioRepository: PortfolioRepository
     let tradingSimulationService: TradingSimulationService
+    let analyticsService: PortfolioAnalyticsService
+    let csvExportService: CSVExportService
 
     private init(
         environmentProvider: EnvironmentProviding,
         configuration: AppConfiguration,
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
-        tradingSimulationService: TradingSimulationService
+        tradingSimulationService: TradingSimulationService,
+        analyticsService: PortfolioAnalyticsService,
+        csvExportService: CSVExportService
     ) {
         self.environmentProvider = environmentProvider
         self.configuration = configuration
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.tradingSimulationService = tradingSimulationService
+        self.analyticsService = analyticsService
+        self.csvExportService = csvExportService
     }
 
     static func bootstrap() -> AppContainer {
@@ -61,13 +67,17 @@ final class AppContainer: ObservableObject {
             portfolioRepository: portfolioRepository,
             supportedSymbols: configuration.enabledAssets.map(\.symbol)
         )
+        let analyticsService = DefaultPortfolioAnalyticsService(repository: portfolioRepository)
+        let csvExportService = DefaultCSVExportService()
 
         let container = AppContainer(
             environmentProvider: environmentProvider,
             configuration: configuration,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
-            tradingSimulationService: tradingSimulationService
+            tradingSimulationService: tradingSimulationService,
+            analyticsService: analyticsService,
+            csvExportService: csvExportService
         )
 
         Task {
@@ -82,11 +92,19 @@ final class AppContainer: ObservableObject {
     }
 
     func makePortfolioViewModel() -> PortfolioViewModel {
-        PortfolioViewModel(portfolioRepository: portfolioRepository)
+        PortfolioViewModel(portfolioRepository: portfolioRepository, analyticsService: analyticsService)
     }
 
     func makeOrdersViewModel() -> OrdersViewModel {
-        OrdersViewModel(portfolioRepository: portfolioRepository)
+        OrdersViewModel(analyticsService: analyticsService, csvExportService: csvExportService)
+    }
+
+    func makeAnalyticsViewModel() -> AnalyticsViewModel {
+        AnalyticsViewModel(analyticsService: analyticsService)
+    }
+
+    func makePositionHistoryViewModel(symbol: String) -> PositionHistoryViewModel {
+        PositionHistoryViewModel(symbol: symbol, analyticsService: analyticsService)
     }
 
     func makeAssetDetailViewModel(asset: Asset) -> AssetDetailViewModel {
