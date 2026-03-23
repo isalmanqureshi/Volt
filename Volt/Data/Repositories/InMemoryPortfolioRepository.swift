@@ -110,13 +110,14 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             positions[existingIndex] = updatedPosition
             AppLogger.portfolio.info("Position increased for \(draft.assetSymbol, privacy: .public)")
         } else {
+            let markedPrice = currentPrice(for: draft.assetSymbol, fallback: executionPrice)
             updatedPosition = Position(
                 id: UUID(),
                 symbol: draft.assetSymbol,
                 quantity: draft.quantity,
                 averageEntryPrice: executionPrice,
-                currentPrice: currentPrice(for: draft.assetSymbol, fallback: executionPrice),
-                unrealizedPnL: 0,
+                currentPrice: markedPrice,
+                unrealizedPnL: Self.unrealizedPnL(quantity: draft.quantity, averageEntryPrice: executionPrice, currentPrice: markedPrice),
                 openedAt: filledAt
             )
             positions.append(updatedPosition)
