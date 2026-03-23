@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+internal import os
 
 final class InMemoryPortfolioRepository: PortfolioRepository {
     private let positionsSubject: CurrentValueSubject<[Position], Never>
