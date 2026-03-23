@@ -16,6 +16,7 @@ final class AssetDetailViewModel: ObservableObject {
     @Published var latestQuote: Quote?
     @Published var candles: [Candle] = []
     @Published var chartState: ChartState = .idle
+    @Published private(set) var openPosition: Position?
 
     let asset: Asset
 
@@ -48,14 +49,17 @@ final class AssetDetailViewModel: ObservableObject {
     }
 
     private let marketDataRepository: MarketDataRepository
+    private let portfolioRepository: PortfolioRepository
     private let defaultCandleOutputSize: Int
     private var quoteCancellable: AnyCancellable?
+    private var positionCancellable: AnyCancellable?
     private var candleTask: Task<Void, Never>?
     private var hasStarted = false
 
-    init(asset: Asset, marketDataRepository: MarketDataRepository, defaultCandleOutputSize: Int) {
+    init(asset: Asset, marketDataRepository: MarketDataRepository, portfolioRepository: PortfolioRepository, defaultCandleOutputSize: Int) {
         self.asset = asset
         self.marketDataRepository = marketDataRepository
+        self.portfolioRepository = portfolioRepository
         self.defaultCandleOutputSize = defaultCandleOutputSize
     }
 
@@ -76,12 +80,20 @@ final class AssetDetailViewModel: ObservableObject {
         candleTask = Task { [weak self] in
             await self?.loadCandlesIfNeeded()
         }
+
+        positionCancellable = portfolioRepository.positionsPublisher
+            .map { [asset] positions in positions.first(where: { $0.symbol == asset.symbol }) }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] position in
+                self?.openPosition = position
+            }
     }
 
 
     func onDisappear() {
         AppLogger.market.debug("Asset detail quote subscription stopped for \(self.asset.symbol, privacy: .public)")
         quoteCancellable?.cancel()
+        positionCancellable?.cancel()
         candleTask?.cancel()
         hasStarted = false
     }

@@ -1,6 +1,6 @@
 import Foundation
 
-struct Position: Identifiable, Equatable, Sendable {
+struct Position: Identifiable, Equatable, Codable, Sendable {
     let id: UUID
     let symbol: String
     let quantity: Decimal

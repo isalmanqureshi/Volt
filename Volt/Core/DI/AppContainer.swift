@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 @MainActor
 final class AppContainer: ObservableObject {
@@ -53,7 +53,8 @@ final class AppContainer: ObservableObject {
         )
         let portfolioRepository = InMemoryPortfolioRepository(
             marketDataRepository: marketDataRepository,
-            cashBalance: configuration.demoInitialCashBalance
+            cashBalance: configuration.demoInitialCashBalance,
+            persistenceStore: FileBackedPortfolioPersistenceStore()
         )
         let tradingSimulationService = DefaultTradingSimulationService(
             marketDataRepository: marketDataRepository,
@@ -84,10 +85,15 @@ final class AppContainer: ObservableObject {
         PortfolioViewModel(portfolioRepository: portfolioRepository)
     }
 
+    func makeOrdersViewModel() -> OrdersViewModel {
+        OrdersViewModel(portfolioRepository: portfolioRepository)
+    }
+
     func makeAssetDetailViewModel(asset: Asset) -> AssetDetailViewModel {
         AssetDetailViewModel(
             asset: asset,
             marketDataRepository: marketDataRepository,
+            portfolioRepository: portfolioRepository,
             defaultCandleOutputSize: configuration.defaultCandleOutputSize
         )
     }
@@ -98,6 +104,14 @@ final class AppContainer: ObservableObject {
             side: side,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
+            tradingSimulationService: tradingSimulationService
+        )
+    }
+
+    func makeClosePositionViewModel(position: Position) -> ClosePositionViewModel {
+        ClosePositionViewModel(
+            position: position,
+            marketDataRepository: marketDataRepository,
             tradingSimulationService: tradingSimulationService
         )
     }
