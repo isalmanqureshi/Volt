@@ -89,7 +89,7 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             throw TradingSimulationError.insufficientFunds(required: requiredNotional, available: cashBalance)
         }
 
-        cashBalance -= requiredNotional
+        let updatedCashBalance = cashBalance - requiredNotional
 
         var positions = positionsSubject.value
         let updatedPosition: Position
@@ -136,10 +136,27 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             realizedPnL: nil
         )
 
+        var orders = orderHistorySubject.value
+        orders.insert(order, at: 0)
+        var timeline = activityTimelineSubject.value
+        timeline.insert(event, at: 0)
+        let realizedHistory = realizedPnLSubject.value
+
+        try persistState(
+            cashBalance: updatedCashBalance,
+            positions: positions,
+            orders: orders,
+            realizedHistory: realizedHistory,
+            activity: timeline
+        )
+
+        cashBalance = updatedCashBalance
         positionsSubject.send(positions)
-        append(order: order, event: event, realized: nil)
+        orderHistorySubject.send(orders)
+        activityTimelineSubject.send(timeline)
+        realizedPnLSubject.send(realizedHistory)
+        AppLogger.portfolio.debug("History timeline updated")
         recalculate(using: Array(latestQuotesBySymbol.values))
-        try persistState()
 
         AppLogger.portfolio.info("Order recorded \(order.id.uuidString, privacy: .public)")
         return TradeExecutionResult(resultingPosition: updatedPosition, orderRecord: order, activityEvent: event, realizedPnLEntry: nil)
@@ -159,7 +176,7 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             throw TradingSimulationError.closeQuantityExceedsOpenQuantity(symbol: draft.assetSymbol)
         }
 
-        cashBalance += executionPrice * draft.quantity
+        let updatedCashBalance = cashBalance + (executionPrice * draft.quantity)
         let remaining = existing.quantity - draft.quantity
         let realizedPnL = Self.realizedPnL(quantityClosed: draft.quantity, averageEntryPrice: existing.averageEntryPrice, exitPrice: executionPrice)
 
@@ -212,30 +229,31 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             realizedPnL: realizedPnL
         )
 
+        var orders = orderHistorySubject.value
+        orders.insert(order, at: 0)
+        var timeline = activityTimelineSubject.value
+        timeline.insert(event, at: 0)
+        var realizedHistory = realizedPnLSubject.value
+        realizedHistory.insert(realizedEntry, at: 0)
+
+        try persistState(
+            cashBalance: updatedCashBalance,
+            positions: positions,
+            orders: orders,
+            realizedHistory: realizedHistory,
+            activity: timeline
+        )
+
+        cashBalance = updatedCashBalance
         positionsSubject.send(positions)
-        append(order: order, event: event, realized: realizedEntry)
+        orderHistorySubject.send(orders)
+        activityTimelineSubject.send(timeline)
+        realizedPnLSubject.send(realizedHistory)
+        AppLogger.portfolio.debug("History timeline updated")
         recalculate(using: Array(latestQuotesBySymbol.values))
-        try persistState()
 
         AppLogger.portfolio.info("Realized P&L recorded \(realizedPnL.description, privacy: .public)")
         return TradeExecutionResult(resultingPosition: resultingPosition, orderRecord: order, activityEvent: event, realizedPnLEntry: realizedEntry)
-    }
-
-    private func append(order: OrderRecord, event: ActivityEvent, realized: RealizedPnLEntry?) {
-        var orders = orderHistorySubject.value
-        orders.insert(order, at: 0)
-        orderHistorySubject.send(orders)
-
-        var timeline = activityTimelineSubject.value
-        timeline.insert(event, at: 0)
-        activityTimelineSubject.send(timeline)
-        AppLogger.portfolio.debug("History timeline updated")
-
-        if let realized {
-            var realizedHistory = realizedPnLSubject.value
-            realizedHistory.insert(realized, at: 0)
-            realizedPnLSubject.send(realizedHistory)
-        }
     }
 
     private func recalculate(using quotes: [Quote]) {
@@ -276,16 +294,22 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
         AppLogger.portfolio.debug("Portfolio recalculated from shared quote stream")
     }
 
-    private func persistState() throws {
+    private func persistState(
+        cashBalance: Decimal,
+        positions: [Position],
+        orders: [OrderRecord],
+        realizedHistory: [RealizedPnLEntry],
+        activity: [ActivityEvent]
+    ) throws {
         guard let persistenceStore else { return }
         do {
             try persistenceStore.saveState(
                 PersistedPortfolioState(
                     cashBalance: cashBalance,
-                    openPositions: positionsSubject.value,
-                    orderHistory: orderHistorySubject.value,
-                    realizedPnLHistory: realizedPnLSubject.value,
-                    activityTimeline: activityTimelineSubject.value,
+                    openPositions: positions,
+                    orderHistory: orders,
+                    realizedPnLHistory: realizedHistory,
+                    activityTimeline: activity,
                     savedAt: Date()
                 )
             )

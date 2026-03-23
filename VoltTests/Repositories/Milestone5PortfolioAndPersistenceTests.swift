@@ -2,6 +2,30 @@ import XCTest
 @testable import Volt
 
 final class Milestone5PortfolioAndPersistenceTests: XCTestCase {
+    func testBuyDoesNotMutateMemoryIfPersistenceSaveFails() {
+        let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
+        let repository = InMemoryPortfolioRepository(
+            marketDataRepository: market,
+            cashBalance: 10_000,
+            persistenceStore: FailingPortfolioPersistenceStore()
+        )
+
+        XCTAssertThrowsError(
+            try repository.applyFilledOrder(
+                .init(assetSymbol: "BTC/USD", side: .buy, type: .market, quantity: 1, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil),
+                executionPrice: 100,
+                filledAt: .now
+            )
+        ) { error in
+            XCTAssertEqual(error as? TradingSimulationError, .persistenceSaveFailed)
+        }
+
+        XCTAssertTrue(repository.currentPositions.isEmpty)
+        XCTAssertEqual(repository.currentSummary.cashBalance, 10_000)
+        XCTAssertTrue(repository.currentOrderHistory.isEmpty)
+        XCTAssertTrue(repository.currentActivityTimeline.isEmpty)
+    }
+
     func testFullCloseRemovesPositionAndRecordsRealizedPnL() throws {
         let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
         let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 10_000)
@@ -73,4 +97,9 @@ final class Milestone5PortfolioAndPersistenceTests: XCTestCase {
         XCTAssertEqual(restored.currentPositions.first?.currentPrice, 120)
         XCTAssertEqual(restored.currentSummary.unrealizedPnL, 20)
     }
+}
+
+private struct FailingPortfolioPersistenceStore: PortfolioPersistenceStore {
+    func loadState() throws -> PersistedPortfolioState? { nil }
+    func saveState(_ state: PersistedPortfolioState) throws { throw PortfolioPersistenceError.failedToWrite }
 }
