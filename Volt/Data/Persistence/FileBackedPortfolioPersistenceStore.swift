@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 struct FileBackedPortfolioPersistenceStore: PortfolioPersistenceStore {
     private let fileURL: URL
