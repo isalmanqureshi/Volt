@@ -61,6 +61,21 @@ final class Milestone5PortfolioAndPersistenceTests: XCTestCase {
         XCTAssertEqual(repository.currentActivityTimeline.count, 2)
     }
 
+    func testNewBuyReturnsMarkedToMarketPnLInResultingPosition() throws {
+        let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 102, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
+        let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 10_000)
+
+        let result = try repository.applyFilledOrder(
+            .init(assetSymbol: "BTC/USD", side: .buy, type: .market, quantity: 1, estimatedPrice: nil, submittedAt: .now, limitPrice: nil, stopPrice: nil),
+            executionPrice: 100,
+            filledAt: .now
+        )
+
+        XCTAssertEqual(result.resultingPosition?.currentPrice, 102)
+        XCTAssertEqual(result.resultingPosition?.unrealizedPnL, 2)
+        XCTAssertEqual(repository.currentPositions.first?.unrealizedPnL, 2)
+    }
+
     func testPersistenceRoundTripAndCorruptedRecovery() throws {
         let market = TradingTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: .now, source: "test", isSimulated: true))
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
