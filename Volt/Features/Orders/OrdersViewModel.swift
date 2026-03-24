@@ -9,9 +9,15 @@ final class OrdersViewModel: ObservableObject {
     }
 
     @Published var selectedSegment: Segment = .orders
-    @Published var selectedRange: AnalyticsTimeRange = .all { didSet { applyFilter() } }
+    @Published var selectedRange: AnalyticsTimeRange = .all {
+        didSet {
+            applyFilter()
+            onRangeChanged?(selectedRange)
+        }
+    }
     @Published var selectedSymbol: String? = nil { didSet { applyFilter() } }
     @Published var selectedEventKinds: Set<ActivityEvent.Kind> = [] { didSet { applyFilter() } }
+    @Published var selectedExportPreset: AnalyticsExportPreset = .fullActivity
     @Published private(set) var orders: [OrderRecord] = []
     @Published private(set) var activity: [ActivityEvent] = []
     @Published private(set) var availableSymbols: [String] = []
@@ -20,12 +26,20 @@ final class OrdersViewModel: ObservableObject {
 
     private let analyticsService: PortfolioAnalyticsService
     private let csvExportService: CSVExportService
+    private let onRangeChanged: ((AnalyticsTimeRange) -> Void)?
     private var rawOrders: [OrderRecord] = []
     private var rawActivity: [ActivityEvent] = []
+    private var cancellables = Set<AnyCancellable>()
 
-    init(analyticsService: PortfolioAnalyticsService, csvExportService: CSVExportService) {
+    init(
+        analyticsService: PortfolioAnalyticsService,
+        csvExportService: CSVExportService,
+        initialRange: AnalyticsTimeRange? = nil,
+        onRangeChanged: ((AnalyticsTimeRange) -> Void)? = nil
+    ) {
         self.analyticsService = analyticsService
         self.csvExportService = csvExportService
+        self.onRangeChanged = onRangeChanged
 
         analyticsService.filteredOrdersPublisher
             .receive(on: RunLoop.main)
@@ -51,7 +65,7 @@ final class OrdersViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        selectedRange = analyticsService.currentFilter.timeRange
+        selectedRange = initialRange ?? analyticsService.currentFilter.timeRange
         selectedSymbol = analyticsService.currentFilter.symbol
         selectedEventKinds = analyticsService.currentFilter.eventKinds
         applyFilter()
@@ -71,14 +85,17 @@ final class OrdersViewModel: ObservableObject {
 
     func exportCSV() {
         do {
-            exportURL = try csvExportService.exportLedger(orders: rawOrders, activity: rawActivity)
+            exportURL = try csvExportService.export(
+                preset: selectedExportPreset,
+                orders: rawOrders,
+                activity: rawActivity,
+                summary: analyticsService.currentSummary
+            )
             exportError = nil
         } catch {
             exportError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
-
-    private var cancellables = Set<AnyCancellable>()
 
     private func applyFilter() {
         var filter = analyticsService.currentFilter

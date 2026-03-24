@@ -17,7 +17,7 @@ struct AnalyticsView: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Performance") {
+            Section("Equity Curve") {
                 if viewModel.performancePoints.isEmpty {
                     ContentUnavailableView("No performance data", systemImage: "chart.line.uptrend.xyaxis")
                 } else {
@@ -27,14 +27,36 @@ struct AnalyticsView: View {
                             y: .value("Equity", NSDecimalNumber(decimal: point.equity).doubleValue)
                         )
                         .foregroundStyle(.blue)
-
-                        LineMark(
-                            x: .value("Time", point.timestamp),
-                            y: .value("Realized", NSDecimalNumber(decimal: point.cumulativeRealizedPnL).doubleValue)
-                        )
-                        .foregroundStyle(.green)
                     }
-                    .frame(height: 220)
+                    .frame(height: 200)
+                    .accessibilityLabel("Equity curve chart")
+                }
+            }
+
+            Section("Daily Realized P&L") {
+                if viewModel.dailyBuckets.isEmpty {
+                    Text("No realized history yet")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Chart(viewModel.dailyBuckets) { bucket in
+                        BarMark(
+                            x: .value("Day", bucket.day),
+                            y: .value("Realized", NSDecimalNumber(decimal: bucket.realizedPnL).doubleValue)
+                        )
+                        .foregroundStyle(bucket.realizedPnL >= 0 ? .green : .red)
+                    }
+                    .frame(height: 180)
+                }
+            }
+
+            Section("Realized Distribution") {
+                if viewModel.realizedDistribution.allSatisfy({ $0.count == 0 }) {
+                    Text("No closed trades yet")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.realizedDistribution) { bucket in
+                        LabeledContent(bucket.label, value: "\(bucket.count) trades")
+                    }
                 }
             }
 
@@ -113,11 +135,15 @@ private final class AnalyticsPreviewService: PortfolioAnalyticsService {
 
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { Just(summaryValue).eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { Just(pointsValue).eraseToAnyPublisher() }
+    var dailyPerformancePublisher: AnyPublisher<[DailyPerformanceBucket], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedDistributionPublisher: AnyPublisher<[RealizedDistributionBucket], Never> { Just([]).eraseToAnyPublisher() }
     var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
     var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
     var availableSymbolsPublisher: AnyPublisher<[String], Never> { Just(["BTC/USD"]).eraseToAnyPublisher() }
     var currentSummary: PortfolioAnalyticsSummary { summaryValue }
     var currentPerformance: [PerformancePoint] { pointsValue }
+    var currentDailyPerformance: [DailyPerformanceBucket] { [] }
+    var currentRealizedDistribution: [RealizedDistributionBucket] { [] }
     var currentFilter: HistoryFilter { filterSubject.value }
     func updateFilter(_ filter: HistoryFilter) { filterSubject.send(filter) }
     func positionHistory(symbol: String) -> PositionHistorySummary { .empty(symbol: symbol) }

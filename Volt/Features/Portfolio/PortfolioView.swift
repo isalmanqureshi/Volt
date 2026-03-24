@@ -187,11 +187,15 @@ private final class PortfolioPreviewAnalyticsService: PortfolioAnalyticsService 
     init(summary: PortfolioAnalyticsSummary) { summaryValue = summary }
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { Just(summaryValue).eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { Just([]).eraseToAnyPublisher() }
+    var dailyPerformancePublisher: AnyPublisher<[DailyPerformanceBucket], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedDistributionPublisher: AnyPublisher<[RealizedDistributionBucket], Never> { Just([]).eraseToAnyPublisher() }
     var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
     var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
     var availableSymbolsPublisher: AnyPublisher<[String], Never> { Just(["BTC/USD"]).eraseToAnyPublisher() }
     var currentSummary: PortfolioAnalyticsSummary { summaryValue }
     var currentPerformance: [PerformancePoint] { [] }
+    var currentDailyPerformance: [DailyPerformanceBucket] { [] }
+    var currentRealizedDistribution: [RealizedDistributionBucket] { [] }
     var currentFilter: HistoryFilter { filterSubject.value }
     func updateFilter(_ filter: HistoryFilter) { filterSubject.send(filter) }
     func positionHistory(symbol: String) -> PositionHistorySummary { .empty(symbol: symbol) }

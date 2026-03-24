@@ -2,6 +2,7 @@ import Foundation
 
 protocol CSVExportService {
     func exportLedger(orders: [OrderRecord], activity: [ActivityEvent]) throws -> URL
+    func export(preset: AnalyticsExportPreset, orders: [OrderRecord], activity: [ActivityEvent], summary: PortfolioAnalyticsSummary) throws -> URL
 }
 
 enum CSVExportError: LocalizedError {

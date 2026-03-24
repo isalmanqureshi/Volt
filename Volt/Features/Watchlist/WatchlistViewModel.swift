@@ -16,6 +16,7 @@ final class WatchlistViewModel: ObservableObject {
     @Published private(set) var rows: [RowState] = []
     @Published private(set) var connectionState: StreamConnectionState = .idle
     @Published private(set) var seedingState: MarketSeedingState = .idle
+    @Published private(set) var isRefreshing = false
 
     private let marketDataRepository: MarketDataRepository
     private let assetsBySymbol: [String: Asset]
@@ -24,6 +25,18 @@ final class WatchlistViewModel: ObservableObject {
         self.marketDataRepository = marketDataRepository
         self.assetsBySymbol = Dictionary(uniqueKeysWithValues: assets.map { ($0.symbol, $0) })
         bind()
+    }
+
+
+    func refresh() {
+        guard isRefreshing == false else { return }
+        isRefreshing = true
+        Task { [weak self] in
+            await self?.marketDataRepository.manualRefresh()
+            await MainActor.run {
+                self?.isRefreshing = false
+            }
+        }
     }
 
     func route(for row: RowState) -> AppRoute? {

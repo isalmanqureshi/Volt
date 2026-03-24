@@ -55,6 +55,14 @@ struct OrdersView: View {
                 }
             }
 
+            Section("Export") {
+                Picker("Preset", selection: $viewModel.selectedExportPreset) {
+                    ForEach(AnalyticsExportPreset.allCases, id: \.self) { preset in
+                        Text(preset.title).tag(preset)
+                    }
+                }
+            }
+
             switch viewModel.selectedSegment {
             case .orders:
                 if viewModel.orders.isEmpty {
@@ -188,11 +196,15 @@ private final class OrdersPreviewAnalyticsService: PortfolioAnalyticsService {
 
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { Just(.empty).eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { Just([]).eraseToAnyPublisher() }
+    var dailyPerformancePublisher: AnyPublisher<[DailyPerformanceBucket], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedDistributionPublisher: AnyPublisher<[RealizedDistributionBucket], Never> { Just([]).eraseToAnyPublisher() }
     var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { Just(orders).eraseToAnyPublisher() }
     var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { Just(activity).eraseToAnyPublisher() }
     var availableSymbolsPublisher: AnyPublisher<[String], Never> { Just(["BTC/USD"]).eraseToAnyPublisher() }
     var currentSummary: PortfolioAnalyticsSummary { .empty }
     var currentPerformance: [PerformancePoint] { [] }
+    var currentDailyPerformance: [DailyPerformanceBucket] { [] }
+    var currentRealizedDistribution: [RealizedDistributionBucket] { [] }
     var currentFilter: HistoryFilter { filterSubject.value }
     func updateFilter(_ filter: HistoryFilter) { filterSubject.send(filter) }
     func positionHistory(symbol: String) -> PositionHistorySummary { .empty(symbol: symbol) }

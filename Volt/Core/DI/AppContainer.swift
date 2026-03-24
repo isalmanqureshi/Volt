@@ -10,6 +10,8 @@ final class AppContainer: ObservableObject {
     let tradingSimulationService: TradingSimulationService
     let analyticsService: PortfolioAnalyticsService
     let csvExportService: CSVExportService
+    let checkpointService: AccountSnapshotCheckpointing
+    let lifecycleCoordinator: AppLifecycleCoordinator
 
     private init(
         environmentProvider: EnvironmentProviding,
@@ -18,7 +20,9 @@ final class AppContainer: ObservableObject {
         portfolioRepository: PortfolioRepository,
         tradingSimulationService: TradingSimulationService,
         analyticsService: PortfolioAnalyticsService,
-        csvExportService: CSVExportService
+        csvExportService: CSVExportService,
+        checkpointService: AccountSnapshotCheckpointing,
+        lifecycleCoordinator: AppLifecycleCoordinator
     ) {
         self.environmentProvider = environmentProvider
         self.configuration = configuration
@@ -27,6 +31,8 @@ final class AppContainer: ObservableObject {
         self.tradingSimulationService = tradingSimulationService
         self.analyticsService = analyticsService
         self.csvExportService = csvExportService
+        self.checkpointService = checkpointService
+        self.lifecycleCoordinator = lifecycleCoordinator
     }
 
     static func bootstrap() -> AppContainer {
@@ -62,29 +68,36 @@ final class AppContainer: ObservableObject {
             cashBalance: configuration.demoInitialCashBalance,
             persistenceStore: FileBackedPortfolioPersistenceStore()
         )
+        let checkpointService = DefaultAccountSnapshotCheckpointService(
+            portfolioRepository: portfolioRepository,
+            environmentProvider: environmentProvider,
+            snapshotStore: FileBackedAccountSnapshotStore()
+        )
         let tradingSimulationService = DefaultTradingSimulationService(
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
             supportedSymbols: configuration.enabledAssets.map(\.symbol)
         )
-        let analyticsService = DefaultPortfolioAnalyticsService(repository: portfolioRepository)
+        let analyticsService = DefaultPortfolioAnalyticsService(repository: portfolioRepository, checkpointService: checkpointService)
         let csvExportService = DefaultCSVExportService()
 
-        let container = AppContainer(
+        let lifecycleCoordinator = AppLifecycleCoordinator(
+            marketDataRepository: marketDataRepository,
+            checkpointService: checkpointService,
+            stateStore: UserDefaultsUIStateRestorationStore()
+        )
+
+        return AppContainer(
             environmentProvider: environmentProvider,
             configuration: configuration,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
             tradingSimulationService: tradingSimulationService,
             analyticsService: analyticsService,
-            csvExportService: csvExportService
+            csvExportService: csvExportService,
+            checkpointService: checkpointService,
+            lifecycleCoordinator: lifecycleCoordinator
         )
-
-        Task {
-            await marketDataRepository.start()
-        }
-
-        return container
     }
 
     func makeWatchlistViewModel() -> WatchlistViewModel {
@@ -96,11 +109,24 @@ final class AppContainer: ObservableObject {
     }
 
     func makeOrdersViewModel() -> OrdersViewModel {
-        OrdersViewModel(analyticsService: analyticsService, csvExportService: csvExportService)
+        OrdersViewModel(
+            analyticsService: analyticsService,
+            csvExportService: csvExportService,
+            initialRange: lifecycleCoordinator.restoreHistoryRange(),
+            onRangeChanged: {[weak self] range in
+                self?.lifecycleCoordinator.persistHistoryRange(range)
+            }
+        )
     }
 
     func makeAnalyticsViewModel() -> AnalyticsViewModel {
-        AnalyticsViewModel(analyticsService: analyticsService)
+        AnalyticsViewModel(
+            analyticsService: analyticsService,
+            initialRange: lifecycleCoordinator.restoreAnalyticsRange(),
+            onRangeChanged: { [weak self]range in
+                self?.lifecycleCoordinator.persistAnalyticsRange(range)
+            }
+        )
     }
 
     func makePositionHistoryViewModel(symbol: String) -> PositionHistoryViewModel {

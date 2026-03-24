@@ -4,10 +4,13 @@ internal import os
 
 final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private let repository: PortfolioRepository
+    private let checkpointService: AccountSnapshotCheckpointing?
     private let nowProvider: () -> Date
 
     private let summarySubject = CurrentValueSubject<PortfolioAnalyticsSummary, Never>(.empty)
     private let performanceSubject = CurrentValueSubject<[PerformancePoint], Never>([])
+    private let dailyPerformanceSubject = CurrentValueSubject<[DailyPerformanceBucket], Never>([])
+    private let realizedDistributionSubject = CurrentValueSubject<[RealizedDistributionBucket], Never>([])
     private let filterSubject = CurrentValueSubject<HistoryFilter, Never>(.default)
     private let filteredOrdersSubject = CurrentValueSubject<[OrderRecord], Never>([])
     private let filteredActivitySubject = CurrentValueSubject<[ActivityEvent], Never>([])
@@ -21,16 +24,25 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
 
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { summarySubject.eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { performanceSubject.eraseToAnyPublisher() }
+    var dailyPerformancePublisher: AnyPublisher<[DailyPerformanceBucket], Never> { dailyPerformanceSubject.eraseToAnyPublisher() }
+    var realizedDistributionPublisher: AnyPublisher<[RealizedDistributionBucket], Never> { realizedDistributionSubject.eraseToAnyPublisher() }
     var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { filteredOrdersSubject.eraseToAnyPublisher() }
     var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { filteredActivitySubject.eraseToAnyPublisher() }
     var availableSymbolsPublisher: AnyPublisher<[String], Never> { availableSymbolsSubject.eraseToAnyPublisher() }
 
     var currentSummary: PortfolioAnalyticsSummary { summarySubject.value }
     var currentPerformance: [PerformancePoint] { performanceSubject.value }
+    var currentDailyPerformance: [DailyPerformanceBucket] { dailyPerformanceSubject.value }
+    var currentRealizedDistribution: [RealizedDistributionBucket] { realizedDistributionSubject.value }
     var currentFilter: HistoryFilter { filterSubject.value }
 
-    init(repository: PortfolioRepository, nowProvider: @escaping () -> Date = Date.init) {
+    init(
+        repository: PortfolioRepository,
+        checkpointService: AccountSnapshotCheckpointing? = nil,
+        nowProvider: @escaping () -> Date = Date.init
+    ) {
         self.repository = repository
+        self.checkpointService = checkpointService
         self.nowProvider = nowProvider
         bind()
     }
@@ -60,21 +72,8 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         let boughtQty = buys.reduce(Decimal.zero) { $0 + $1.quantity }
         let soldQty = sells.reduce(Decimal.zero) { $0 + $1.quantity }
 
-        let averageEntry: Decimal?
-        if boughtQty > 0 {
-            let boughtNotional = buys.reduce(Decimal.zero) { $0 + $1.grossValue }
-            averageEntry = boughtNotional / boughtQty
-        } else {
-            averageEntry = nil
-        }
-
-        let averageExit: Decimal?
-        if soldQty > 0 {
-            let soldNotional = sells.reduce(Decimal.zero) { $0 + $1.grossValue }
-            averageExit = soldNotional / soldQty
-        } else {
-            averageExit = nil
-        }
+        let averageEntry = boughtQty > 0 ? buys.reduce(Decimal.zero) { $0 + $1.grossValue } / boughtQty : nil
+        let averageExit = soldQty > 0 ? sells.reduce(Decimal.zero) { $0 + $1.grossValue } / soldQty : nil
 
         let realized = latestRealized
             .filter { $0.symbol == symbol }
@@ -123,34 +122,34 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func recompute() {
-        AppLogger.analytics.debug("Analytics recompute started")
         let summary = makeSummary()
-        let performance = makePerformancePoints(summary: summary)
         summarySubject.send(summary)
-        performanceSubject.send(performance)
+        performanceSubject.send(makePerformancePoints(summary: summary))
+        dailyPerformanceSubject.send(makeDailyBuckets())
+        realizedDistributionSubject.send(makeDistributionBuckets())
 
         let symbols = Set(latestOrders.map(\.symbol)).union(latestActivity.map(\.symbol))
         availableSymbolsSubject.send(symbols.sorted())
         applyFilter()
-        AppLogger.analytics.debug("Analytics recompute finished")
     }
 
     private func applyFilter() {
         let filter = filterSubject.value
         let now = nowProvider()
-        let filteredOrders = latestOrders.filter { order in
-            filter.contains(date: order.executedAt, referenceDate: now)
-                && filter.allowsSymbol(order.symbol)
-                && (filter.eventKinds.isEmpty || filter.allows(kind: order.side == .buy ? .buy : .sell))
-        }
-        let filteredActivity = latestActivity.filter { event in
-            filter.contains(date: event.timestamp, referenceDate: now)
-                && filter.allowsSymbol(event.symbol)
-                && filter.allows(kind: event.kind)
-        }
-
-        filteredOrdersSubject.send(filteredOrders)
-        filteredActivitySubject.send(filteredActivity)
+        filteredOrdersSubject.send(
+            latestOrders.filter { order in
+                filter.contains(date: order.executedAt, referenceDate: now)
+                    && filter.allowsSymbol(order.symbol)
+                    && (filter.eventKinds.isEmpty || filter.allows(kind: order.side == .buy ? .buy : .sell))
+            }
+        )
+        filteredActivitySubject.send(
+            latestActivity.filter { event in
+                filter.contains(date: event.timestamp, referenceDate: now)
+                    && filter.allowsSymbol(event.symbol)
+                    && filter.allows(kind: event.kind)
+            }
+        )
     }
 
     private func makeSummary() -> PortfolioAnalyticsSummary {
@@ -163,15 +162,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         let totalWins = wins.reduce(Decimal.zero, +)
         let totalLossMagnitude = losses.reduce(Decimal.zero) { $0 + abs($1) }
         let winRate = closed.isEmpty ? nil : (Decimal(wins.count) / Decimal(closed.count))
-        let profitFactor: Decimal?
-        if totalLossMagnitude == 0 {
-            profitFactor = totalWins > 0 ? Decimal.greatestFiniteMagnitude : nil
-        } else {
-            profitFactor = totalWins / totalLossMagnitude
-        }
-
-        let bestTrade = closed.map(\.realizedPnL).max()
-        let worstTrade = closed.map(\.realizedPnL).min()
+        let profitFactor: Decimal? = totalLossMagnitude == 0 ? (totalWins > 0 ? Decimal.greatestFiniteMagnitude : nil) : (totalWins / totalLossMagnitude)
 
         let currentEquity = latestSummary.totalEquity
         let inferredStartingBalance = currentEquity - latestSummary.realizedPnL - latestSummary.unrealizedPnL
@@ -191,8 +182,8 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
             profitFactor: profitFactor,
             winRate: winRate,
             totalClosedTrades: closed.count,
-            bestTrade: bestTrade,
-            worstTrade: worstTrade,
+            bestTrade: closed.map(\.realizedPnL).max(),
+            worstTrade: closed.map(\.realizedPnL).min(),
             currentEquity: currentEquity,
             startingBalance: safeStartingBalance,
             netReturnPercent: netReturnPercent
@@ -200,35 +191,32 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func makePerformancePoints(summary: PortfolioAnalyticsSummary) -> [PerformancePoint] {
-        let sortedActivity = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })
-        let ordersByID = Dictionary(uniqueKeysWithValues: latestOrders.map { ($0.id, $0) })
-
-        let inferredStartingBalance = summary.startingBalance ?? latestSummary.cashBalance
-        var runningCash = inferredStartingBalance
-        var cumulativeRealized = Decimal.zero
-        var points: [PerformancePoint] = []
-
-        for event in sortedActivity {
-            if let order = ordersByID[event.orderID] {
-                switch order.side {
-                case .buy:
-                    runningCash -= order.grossValue
-                case .sell:
-                    runningCash += order.grossValue
-                }
-            }
-
-            cumulativeRealized += event.realizedPnL ?? 0
-            let equity = inferredStartingBalance + cumulativeRealized
-            points.append(
-                PerformancePoint(
-                    timestamp: event.timestamp,
-                    equity: equity,
-                    cashBalance: runningCash,
-                    unrealizedPnL: 0,
-                    cumulativeRealizedPnL: cumulativeRealized
-                )
+        var points: [PerformancePoint] = checkpointService?.checkpoints.map {
+            PerformancePoint(
+                timestamp: $0.timestamp,
+                equity: $0.totalEquity,
+                cashBalance: $0.cashBalance,
+                unrealizedPnL: $0.unrealizedPnL,
+                cumulativeRealizedPnL: $0.realizedPnL
             )
+        } ?? []
+
+        if points.isEmpty {
+            let sortedActivity = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })
+            let inferredStartingBalance = summary.startingBalance ?? latestSummary.cashBalance
+            var cumulativeRealized = Decimal.zero
+            for event in sortedActivity {
+                cumulativeRealized += event.realizedPnL ?? 0
+                points.append(
+                    PerformancePoint(
+                        timestamp: event.timestamp,
+                        equity: inferredStartingBalance + cumulativeRealized,
+                        cashBalance: latestSummary.cashBalance,
+                        unrealizedPnL: 0,
+                        cumulativeRealizedPnL: cumulativeRealized
+                    )
+                )
+            }
         }
 
         points.append(
@@ -242,5 +230,33 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         )
 
         return points.sorted(by: { $0.timestamp < $1.timestamp })
+    }
+
+    private func makeDailyBuckets(calendar: Calendar = .current) -> [DailyPerformanceBucket] {
+        let grouped = Dictionary(grouping: latestRealized) { entry in
+            calendar.startOfDay(for: entry.closedAt)
+        }
+
+        return grouped
+            .map { day, entries in
+                DailyPerformanceBucket(
+                    day: day,
+                    realizedPnL: entries.reduce(Decimal.zero) { $0 + $1.realizedPnL },
+                    tradeCount: entries.count
+                )
+            }
+            .sorted(by: { $0.day < $1.day })
+    }
+
+    private func makeDistributionBuckets() -> [RealizedDistributionBucket] {
+        let gains = latestRealized.filter { $0.realizedPnL > 0 }
+        let losses = latestRealized.filter { $0.realizedPnL < 0 }
+        let flat = latestRealized.filter { $0.realizedPnL == 0 }
+
+        return [
+            RealizedDistributionBucket(id: "gains", label: "Gains", count: gains.count, totalPnL: gains.reduce(0) { $0 + $1.realizedPnL }, outcome: .gain),
+            RealizedDistributionBucket(id: "losses", label: "Losses", count: losses.count, totalPnL: losses.reduce(0) { $0 + $1.realizedPnL }, outcome: .loss),
+            RealizedDistributionBucket(id: "flat", label: "Flat", count: flat.count, totalPnL: flat.reduce(0) { $0 + $1.realizedPnL }, outcome: .flat)
+        ]
     }
 }
