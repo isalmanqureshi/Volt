@@ -3,6 +3,7 @@ import SwiftUI
 struct RootTabView: View {
     @EnvironmentObject private var container: AppContainer
     @State private var selectedTab: AppLifecycleCoordinator.Tab = .watchlist
+    @State private var showOnboarding = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -45,7 +46,7 @@ struct RootTabView: View {
             }
 
             NavigationStack {
-                SettingsView(environmentName: container.environmentProvider.currentEnvironment.displayName)
+                SettingsView(viewModel: SettingsViewModel(preferencesStore: container.preferencesStore))
             }
             .tag(AppLifecycleCoordinator.Tab.settings)
             .tabItem {
@@ -54,9 +55,16 @@ struct RootTabView: View {
         }
         .onAppear {
             selectedTab = container.lifecycleCoordinator.restoreTab()
+            showOnboarding = container.preferencesStore.currentPreferences.onboardingCompleted == false
+        }
+        .onReceive(container.preferencesStore.preferencesPublisher) { preferences in
+            showOnboarding = preferences.onboardingCompleted == false
         }
         .onChange(of: selectedTab) { _, newValue in
             container.lifecycleCoordinator.persistTab(newValue)
+        }
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView(viewModel: OnboardingViewModel(preferences: container.preferencesStore))
         }
     }
 }

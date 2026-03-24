@@ -5,6 +5,7 @@ internal import os
 final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private let repository: PortfolioRepository
     private let checkpointService: AccountSnapshotCheckpointing?
+    private let environmentProvider: EnvironmentProviding?
     private let nowProvider: () -> Date
 
     private let summarySubject = CurrentValueSubject<PortfolioAnalyticsSummary, Never>(.empty)
@@ -39,10 +40,12 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     init(
         repository: PortfolioRepository,
         checkpointService: AccountSnapshotCheckpointing? = nil,
+        environmentProvider: EnvironmentProviding? = nil,
         nowProvider: @escaping () -> Date = Date.init
     ) {
         self.repository = repository
         self.checkpointService = checkpointService
+        self.environmentProvider = environmentProvider
         self.nowProvider = nowProvider
         bind()
     }
@@ -191,7 +194,18 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func makePerformancePoints(summary: PortfolioAnalyticsSummary) -> [PerformancePoint] {
-        var points: [PerformancePoint] = checkpointService?.checkpoints.map {
+        let filteredCheckpoints: [AccountSnapshotCheckpoint] = {
+            guard let checkpointService else { return [] }
+            guard let environmentProvider else {
+                return checkpointService.checkpoints
+            }
+            let environment = environmentProvider.currentEnvironment
+            let matching = checkpointService.checkpoints.filter { $0.environment == environment }
+            AppLogger.analytics.debug("Performance checkpoint filter env=\(environment.rawValue, privacy: .public) matched=\(matching.count, privacy: .public)")
+            return matching
+        }()
+
+        var points: [PerformancePoint] = filteredCheckpoints.map {
             PerformancePoint(
                 timestamp: $0.timestamp,
                 equity: $0.totalEquity,
@@ -199,7 +213,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
                 unrealizedPnL: $0.unrealizedPnL,
                 cumulativeRealizedPnL: $0.realizedPnL
             )
-        } ?? []
+        }
 
         if points.isEmpty {
             let sortedActivity = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })

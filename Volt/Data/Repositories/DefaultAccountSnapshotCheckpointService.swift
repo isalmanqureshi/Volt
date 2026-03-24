@@ -55,6 +55,11 @@ final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointin
             }
         }
 
+        // Pull an immediate fresh snapshot to keep order-driven checkpoints internally
+        // consistent even when publisher emission ordering differs during mutations.
+        latestSummary = portfolioRepository.currentSummary
+        latestOpenPositionCount = portfolioRepository.currentPositions.count
+
         let checkpoint = AccountSnapshotCheckpoint(
             timestamp: now,
             cashBalance: latestSummary.cashBalance,
@@ -93,11 +98,7 @@ final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointin
             }
             .store(in: &cancellables)
 
-        portfolioRepository.orderHistoryPublisher
-            .dropFirst()
-            .sink { [weak self] _ in
-                self?.checkpoint(trigger: .orderExecution)
-            }
-            .store(in: &cancellables)
+        // Order execution checkpoints are intentionally triggered by the trading
+        // service after repository mutation + summary recomputation completes.
     }
 }

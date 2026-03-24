@@ -21,10 +21,14 @@ final class TradeTicketViewModel: ObservableObject {
     @Published private(set) var canSubmit = false
     @Published private(set) var didSubmitSuccessfully = false
     @Published private(set) var availableCash: Decimal = 0
+    @Published private(set) var riskWarning: String?
+    @Published private(set) var tradeRecap: TradeRecap?
 
     private let marketDataRepository: MarketDataRepository
     private let portfolioRepository: PortfolioRepository
     private let tradingSimulationService: TradingSimulationService
+    private let preferencesStore: AppPreferencesProviding
+    private let tradeInsightService: TradeSummaryInsightService
     private let logger = Logger(subsystem: "com.volt.app", category: "trade-ticket")
     private var cancellables = Set<AnyCancellable>()
 
@@ -33,14 +37,19 @@ final class TradeTicketViewModel: ObservableObject {
         side: OrderSide = .buy,
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
-        tradingSimulationService: TradingSimulationService
+        tradingSimulationService: TradingSimulationService,
+        preferencesStore: AppPreferencesProviding = UserDefaultsAppPreferencesStore(),
+        tradeInsightService: TradeSummaryInsightService = LocalInsightSummaryService()
     ) {
         self.asset = asset
         self.side = side
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.tradingSimulationService = tradingSimulationService
+        self.preferencesStore = preferencesStore
+        self.tradeInsightService = tradeInsightService
         bind()
+        applyRiskDefaults()
         logger.info("Trade ticket opened for \(asset.symbol, privacy: .public)")
     }
 
@@ -68,7 +77,8 @@ final class TradeTicketViewModel: ObservableObject {
         )
 
         do {
-            _ = try tradingSimulationService.placeOrder(draft)
+            let result = try tradingSimulationService.placeOrder(draft)
+            tradeRecap = tradeInsightService.makeRecap(result: result, latestSummary: portfolioRepository.currentSummary)
             didSubmitSuccessfully = true
         } catch {
             logger.error("Trade ticket submission failed: \(error.localizedDescription, privacy: .public)")
@@ -119,6 +129,7 @@ final class TradeTicketViewModel: ObservableObject {
 
         let cost = latestPrice * quantity
         estimatedCost = cost
+        riskWarning = riskWarningMessage(orderValue: cost)
         if side == .buy, cost > availableCash {
             validationState = .invalid("Insufficient cash balance.")
             canSubmit = false
@@ -126,6 +137,27 @@ final class TradeTicketViewModel: ObservableObject {
         }
         validationState = .valid
         canSubmit = true
+    }
+
+    private func applyRiskDefaults() {
+        let preferences = preferencesStore.currentPreferences.simulatorRisk.validated()
+        switch preferences.orderSizeMode {
+        case .fixedQuantity:
+            quantityText = preferences.defaultOrderSizeValue.formatted(.number)
+        case .fixedNotional, .percentOfCash:
+            break
+        }
+    }
+
+    private func riskWarningMessage(orderValue: Decimal) -> String? {
+        let prefs = preferencesStore.currentPreferences.simulatorRisk.validated()
+        guard prefs.riskWarningsEnabled else { return nil }
+        guard availableCash > 0 else { return nil }
+        let percent = (orderValue / availableCash) * 100
+        if percent >= prefs.warningThresholdPercent {
+            return "Order notional is \(percent.formatted(.number.precision(.fractionLength(1...2))))% of available cash."
+        }
+        return nil
     }
 }
 
@@ -161,11 +193,23 @@ struct TradeTicketView: View {
                         .foregroundStyle(.orange)
                 }
             }
+            if let riskWarning = viewModel.riskWarning {
+                Section("Risk Warning") {
+                    Text(riskWarning)
+                        .foregroundStyle(.orange)
+                }
+            }
 
             if let submissionError = viewModel.submissionError {
                 Section {
                     Text(submissionError)
                         .foregroundStyle(.red)
+                }
+            }
+            if let recap = viewModel.tradeRecap {
+                Section(recap.title) {
+                    Text(recap.body)
+                        .font(.subheadline)
                 }
             }
 

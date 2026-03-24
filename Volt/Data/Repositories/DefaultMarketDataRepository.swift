@@ -3,6 +3,42 @@ import Foundation
 internal import os
 
 final class DefaultMarketDataRepository: MarketDataRepository {
+    private actor StartupState {
+        private(set) var hasSeeded = false
+        private var activePipeline: Task<Void, Never>?
+
+        func hasCompletedSeed() -> Bool { hasSeeded }
+
+        func runPipelineIfNeeded(
+            forceReseed: Bool,
+            operation: @escaping (_ hasSeeded: Bool) async -> Bool
+        ) async {
+            if forceReseed == false, hasSeeded {
+                return
+            }
+
+            if let activePipeline {
+                await activePipeline.value
+                return
+            }
+
+            let seededBeforeRun = hasSeeded
+            let task = Task {
+                let success = await operation(seededBeforeRun)
+                await self.finishPipeline(success: success)
+            }
+            activePipeline = task
+            await task.value
+        }
+
+        private func finishPipeline(success: Bool) {
+            if success {
+                hasSeeded = true
+            }
+            activePipeline = nil
+        }
+    }
+
     private let seedProvider: MarketSeedProvider
     private let historicalDataProvider: HistoricalDataProvider
     private let simulationEngine: MarketSimulationEngine
@@ -10,7 +46,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     private let defaultCandleOutputSize: Int
     private let reseedInterval: TimeInterval
     private var cancellables = Set<AnyCancellable>()
-    private var hasSeeded = false
+    private let startupState = StartupState()
     private var lastBackgroundDate: Date?
 
     private let quotesSubject = CurrentValueSubject<[Quote], Never>([])
@@ -39,16 +75,13 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     func start() async {
-        guard hasSeeded == false else {
-            AppLogger.market.debug("Seed skipped: repository already active")
-            return
-        }
-        await seedAndStart(reason: "cold-launch", forceReseed: false)
+        await runSeedPipeline(reason: "cold-launch", forceReseed: false)
     }
 
     func handleForegroundResume(at date: Date) async {
         AppLogger.market.info("Lifecycle foreground resume received")
-        guard hasSeeded else {
+        let hasCompletedSeed = await startupState.hasCompletedSeed()
+        guard hasCompletedSeed else {
             await start()
             return
         }
@@ -57,7 +90,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
             let elapsed = date.timeIntervalSince(lastBackgroundDate)
             AppLogger.market.debug("Resume reseed elapsed=\(elapsed, privacy: .public)s")
             if elapsed >= reseedInterval {
-                await seedAndStart(reason: "resume-stale", forceReseed: true)
+                await runSeedPipeline(reason: "resume-stale", forceReseed: true)
             }
         }
 
@@ -70,42 +103,61 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     func manualRefresh() async {
-        await seedAndStart(reason: "manual-refresh", forceReseed: true)
+        await runSeedPipeline(reason: "manual-refresh", forceReseed: true)
     }
 
-    private func seedAndStart(reason: String, forceReseed: Bool) async {
+    private func runSeedPipeline(reason: String, forceReseed: Bool) async {
+        await startupState.runPipelineIfNeeded(forceReseed: forceReseed) { [weak self] hadSeededBeforeRun in
+            guard let self else { return false }
+            AppLogger.market.info("Seed pipeline started reason=\(reason, privacy: .public) seededBeforeRun=\(hadSeededBeforeRun, privacy: .public)")
+            let success = await self.seedAndStart(reason: reason, forceReseed: forceReseed, hadSeededBeforeRun: hadSeededBeforeRun)
+            if success {
+                AppLogger.market.info("Seed pipeline finished reason=\(reason, privacy: .public)")
+            } else {
+                AppLogger.market.warning("Seed pipeline failed reason=\(reason, privacy: .public)")
+            }
+            return success
+        }
+    }
+
+    private func seedAndStart(reason: String, forceReseed: Bool, hadSeededBeforeRun: Bool) async -> Bool {
         guard symbols.isEmpty == false else {
             AppLogger.market.error("Seeding skipped: no configured symbols")
             seedingStateSubject.send(.failed("no-symbols"))
-            return
+            return false
         }
 
         seedingStateSubject.send(.seeding)
         do {
             let initialQuotes = try await seedProvider.fetchInitialQuotes(for: symbols)
             quotesSubject.send(initialQuotes)
-            if hasSeeded && forceReseed {
+            if hadSeededBeforeRun && forceReseed {
                 simulationEngine.reseed(with: initialQuotes)
             } else {
                 simulationEngine.start(with: initialQuotes)
             }
-            hasSeeded = true
             seedingStateSubject.send(.ready)
             AppLogger.market.info("Simulation seeded reason=\(reason, privacy: .public)")
+            return true
         } catch {
+            if error is CancellationError {
+                seedingStateSubject.send(.failed("cancelled"))
+                AppLogger.market.warning("Seed pipeline cancelled reason=\(reason, privacy: .public)")
+                return false
+            }
             AppLogger.market.error("Failed to fetch seed quotes. Falling back to baseline prices. Error: \(error.localizedDescription, privacy: .public)")
             let fallback = symbols.map { symbol in
                 Quote(symbol: symbol, lastPrice: defaultFallbackPrice(for: symbol), changePercent: 0, timestamp: Date(), source: "fallback-mock", isSimulated: false)
             }
             quotesSubject.send(fallback)
-            if hasSeeded && forceReseed {
+            if hadSeededBeforeRun && forceReseed {
                 simulationEngine.reseed(with: fallback)
             } else {
                 simulationEngine.start(with: fallback)
             }
-            hasSeeded = true
             seedingStateSubject.send(.fallbackMocked(error.localizedDescription))
             AppLogger.market.warning("Fallback seed quotes activated reason=\(reason, privacy: .public)")
+            return true
         }
     }
 

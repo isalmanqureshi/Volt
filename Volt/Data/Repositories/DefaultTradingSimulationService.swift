@@ -4,17 +4,20 @@ internal import os
 final class DefaultTradingSimulationService: TradingSimulationService {
     private let marketDataRepository: MarketDataRepository
     private let portfolioRepository: PortfolioRepository
+    private let checkpointService: AccountSnapshotCheckpointing?
     private let supportedSymbols: Set<String>
     private let slippageBps: Decimal
 
     init(
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
+        checkpointService: AccountSnapshotCheckpointing? = nil,
         supportedSymbols: [String],
         slippageBps: Decimal = 0
     ) {
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
+        self.checkpointService = checkpointService
         self.supportedSymbols = Set(supportedSymbols)
         self.slippageBps = slippageBps
     }
@@ -48,6 +51,8 @@ final class DefaultTradingSimulationService: TradingSimulationService {
 
         let executionPrice = applySlippage(to: quote.lastPrice, side: draft.side)
         let result = try portfolioRepository.applyFilledOrder(draft, executionPrice: executionPrice, filledAt: draft.submittedAt)
+        checkpointService?.checkpoint(trigger: .orderExecution)
+        AppLogger.analytics.debug("Order execution checkpoint requested after summary recomputation")
         AppLogger.portfolio.info("Order filled locally: \(draft.assetSymbol, privacy: .public) at \(executionPrice.description, privacy: .public)")
         return result
     }
