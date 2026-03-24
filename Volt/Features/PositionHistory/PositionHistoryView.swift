@@ -64,11 +64,15 @@ struct PositionHistoryView: View {
 private struct PositionHistoryPreviewAnalyticsService: PortfolioAnalyticsService {
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { Just(.empty).eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { Just([]).eraseToAnyPublisher() }
+    var dailyPerformancePublisher: AnyPublisher<[DailyPerformanceBucket], Never> { Just([]).eraseToAnyPublisher() }
+    var realizedDistributionPublisher: AnyPublisher<[RealizedDistributionBucket], Never> { Just([]).eraseToAnyPublisher() }
     var filteredOrdersPublisher: AnyPublisher<[OrderRecord], Never> { Just([]).eraseToAnyPublisher() }
     var filteredActivityPublisher: AnyPublisher<[ActivityEvent], Never> { Just([]).eraseToAnyPublisher() }
     var availableSymbolsPublisher: AnyPublisher<[String], Never> { Just(["BTC/USD"]).eraseToAnyPublisher() }
     var currentSummary: PortfolioAnalyticsSummary { .empty }
     var currentPerformance: [PerformancePoint] { [] }
+    var currentDailyPerformance: [DailyPerformanceBucket] { [] }
+    var currentRealizedDistribution: [RealizedDistributionBucket] { [] }
     var currentFilter: HistoryFilter { .default }
     func updateFilter(_ filter: HistoryFilter) {}
     func positionHistory(symbol: String) -> PositionHistorySummary {
