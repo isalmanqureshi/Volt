@@ -1,5 +1,6 @@
 import SwiftUI
 import Foundation
+internal import os
 
 @MainActor
 final class AppLifecycleCoordinator {

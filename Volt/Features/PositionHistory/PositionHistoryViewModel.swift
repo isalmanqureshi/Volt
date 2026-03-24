@@ -1,7 +1,9 @@
 import Foundation
+import Combine
 
 @MainActor
 final class PositionHistoryViewModel: ObservableObject {
+    
     @Published private(set) var summary: PositionHistorySummary
 
     private let symbol: String

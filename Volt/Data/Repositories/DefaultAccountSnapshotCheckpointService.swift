@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+internal import os
 
 final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointing {
     private let portfolioRepository: PortfolioRepository
@@ -35,7 +36,7 @@ final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointin
         do {
             checkpoints = try snapshotStore.loadCheckpoints().sorted(by: { $0.timestamp < $1.timestamp })
             lastCheckpointDate = checkpoints.last?.timestamp
-            AppLogger.analytics.info("Checkpoint restore succeeded count=\(checkpoints.count, privacy: .public)")
+            AppLogger.analytics.info("Checkpoint restore succeeded count=\(self.checkpoints.count, privacy: .public)")
         } catch {
             checkpoints = []
             AppLogger.analytics.error("Checkpoint restore failed; continuing with empty set")

@@ -113,8 +113,8 @@ final class AppContainer: ObservableObject {
             analyticsService: analyticsService,
             csvExportService: csvExportService,
             initialRange: lifecycleCoordinator.restoreHistoryRange(),
-            onRangeChanged: { range in
-                lifecycleCoordinator.persistHistoryRange(range)
+            onRangeChanged: {[weak self] range in
+                self?.lifecycleCoordinator.persistHistoryRange(range)
             }
         )
     }
@@ -123,8 +123,8 @@ final class AppContainer: ObservableObject {
         AnalyticsViewModel(
             analyticsService: analyticsService,
             initialRange: lifecycleCoordinator.restoreAnalyticsRange(),
-            onRangeChanged: { range in
-                lifecycleCoordinator.persistAnalyticsRange(range)
+            onRangeChanged: { [weak self]range in
+                self?.lifecycleCoordinator.persistAnalyticsRange(range)
             }
         )
     }

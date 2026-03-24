@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 struct FileBackedAccountSnapshotStore: AccountSnapshotStore {
     private let fileURL: URL
