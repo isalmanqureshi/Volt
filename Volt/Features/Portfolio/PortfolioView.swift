@@ -17,6 +17,24 @@ struct PortfolioView: View {
                 LabeledContent("Position Value", value: viewModel.summary.positionsMarketValue.formatted(.currency(code: "USD")))
             }
 
+            if viewModel.aiSummariesEnabled {
+                Section("AI-style Insights") {
+                    if viewModel.insightCards.isEmpty {
+                        DSStatusMessage(title: "No insights yet", systemImage: "sparkles")
+                    } else {
+                        ForEach(viewModel.insightCards) { card in
+                            DSCard(title: card.title) {
+                                Text(card.body)
+                                    .font(.subheadline)
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .padding(.vertical, 4)
+                        }
+                    }
+                }
+            }
+
             Section("Analytics Snapshot") {
                 LabeledContent("Closed Trades", value: String(viewModel.analyticsSummary.totalClosedTrades))
                 LabeledContent("Win Rate", value: percent(viewModel.analyticsSummary.winRate))

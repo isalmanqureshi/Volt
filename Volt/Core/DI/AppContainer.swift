@@ -11,6 +11,8 @@ final class AppContainer: ObservableObject {
     let analyticsService: PortfolioAnalyticsService
     let csvExportService: CSVExportService
     let checkpointService: AccountSnapshotCheckpointing
+    let preferencesStore: AppPreferencesProviding
+    let insightService: LocalInsightSummaryService
     let lifecycleCoordinator: AppLifecycleCoordinator
 
     private init(
@@ -22,6 +24,8 @@ final class AppContainer: ObservableObject {
         analyticsService: PortfolioAnalyticsService,
         csvExportService: CSVExportService,
         checkpointService: AccountSnapshotCheckpointing,
+        preferencesStore: AppPreferencesProviding,
+        insightService: LocalInsightSummaryService,
         lifecycleCoordinator: AppLifecycleCoordinator
     ) {
         self.environmentProvider = environmentProvider
@@ -32,6 +36,8 @@ final class AppContainer: ObservableObject {
         self.analyticsService = analyticsService
         self.csvExportService = csvExportService
         self.checkpointService = checkpointService
+        self.preferencesStore = preferencesStore
+        self.insightService = insightService
         self.lifecycleCoordinator = lifecycleCoordinator
     }
 
@@ -76,10 +82,17 @@ final class AppContainer: ObservableObject {
         let tradingSimulationService = DefaultTradingSimulationService(
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
+            checkpointService: checkpointService,
             supportedSymbols: configuration.enabledAssets.map(\.symbol)
         )
-        let analyticsService = DefaultPortfolioAnalyticsService(repository: portfolioRepository, checkpointService: checkpointService)
+        let analyticsService = DefaultPortfolioAnalyticsService(
+            repository: portfolioRepository,
+            checkpointService: checkpointService,
+            environmentProvider: environmentProvider
+        )
         let csvExportService = DefaultCSVExportService()
+        let preferencesStore = UserDefaultsAppPreferencesStore()
+        let insightService = LocalInsightSummaryService()
 
         let lifecycleCoordinator = AppLifecycleCoordinator(
             marketDataRepository: marketDataRepository,
@@ -96,6 +109,8 @@ final class AppContainer: ObservableObject {
             analyticsService: analyticsService,
             csvExportService: csvExportService,
             checkpointService: checkpointService,
+            preferencesStore: preferencesStore,
+            insightService: insightService,
             lifecycleCoordinator: lifecycleCoordinator
         )
     }
@@ -105,7 +120,12 @@ final class AppContainer: ObservableObject {
     }
 
     func makePortfolioViewModel() -> PortfolioViewModel {
-        PortfolioViewModel(portfolioRepository: portfolioRepository, analyticsService: analyticsService)
+        PortfolioViewModel(
+            portfolioRepository: portfolioRepository,
+            analyticsService: analyticsService,
+            preferencesStore: preferencesStore,
+            insightService: insightService
+        )
     }
 
     func makeOrdersViewModel() -> OrdersViewModel {
@@ -148,7 +168,9 @@ final class AppContainer: ObservableObject {
             side: side,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
-            tradingSimulationService: tradingSimulationService
+            tradingSimulationService: tradingSimulationService,
+            preferencesStore: preferencesStore,
+            tradeInsightService: insightService
         )
     }
 
