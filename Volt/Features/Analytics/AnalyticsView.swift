@@ -60,6 +60,18 @@ struct AnalyticsView: View {
                 }
             }
 
+
+            if viewModel.insightCards.isEmpty == false {
+                Section("Insights") {
+                    ForEach(viewModel.insightCards) { card in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(card.title).font(.subheadline.weight(.semibold))
+                            Text(card.body).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
             Section("Summary") {
                 LabeledContent("Current Equity", value: viewModel.summary.currentEquity.formatted(.currency(code: "USD")))
                 LabeledContent("Realized P&L", value: viewModel.summary.totalRealizedPnL.formatted(.currency(code: "USD")))

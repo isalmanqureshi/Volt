@@ -2,11 +2,6 @@ import Combine
 import Foundation
 internal import os
 
-enum AppPreferencesStoreError: Error {
-    case encodeFailed
-    case decodeFailed
-}
-
 final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
     private let defaults: UserDefaults
     private let key: String
@@ -30,8 +25,26 @@ final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
         var value = subject.value
         mutate(&value)
         value.simulatorRisk = value.simulatorRisk.validated()
+        if RuntimeProfile.all.contains(where: { $0.id == value.activeRuntimeProfileID }) == false {
+            value.activeRuntimeProfileID = RuntimeProfile.balanced.id
+        }
         persist(value)
         subject.send(value)
+    }
+
+    func selectRuntimeProfile(_ profile: RuntimeProfile) {
+        update {
+            $0.activeRuntimeProfileID = profile.id
+            $0.selectedEnvironment = profile.environment
+            $0.simulatorRisk = profile.simulatorDefaults
+        }
+        AppLogger.app.info("Runtime profile switched to \(profile.id, privacy: .public)")
+    }
+
+    func resetSimulatorControlsToProfileDefaults() {
+        let profile = currentPreferences.activeRuntimeProfile
+        update { $0.simulatorRisk = profile.simulatorDefaults }
+        AppLogger.app.info("Simulator controls reset for profile \(profile.id, privacy: .public)")
     }
 
     func resetOnboarding() {
@@ -57,11 +70,13 @@ final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
         guard let data = defaults.data(forKey: key) else { return nil }
         do {
             let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
+            let profile = RuntimeProfile.resolve(id: decoded.activeRuntimeProfileID)
             return AppPreferences(
                 onboardingCompleted: decoded.onboardingCompleted,
                 aiSummariesEnabled: decoded.aiSummariesEnabled,
                 selectedEnvironment: decoded.selectedEnvironment,
-                simulatorRisk: decoded.simulatorRisk.validated()
+                simulatorRisk: decoded.simulatorRisk.validated(),
+                activeRuntimeProfileID: profile.id
             )
         } catch {
             AppLogger.app.error("App preferences decode failed. Falling back to defaults")

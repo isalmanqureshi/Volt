@@ -63,6 +63,13 @@ struct RootTabView: View {
         .onChange(of: selectedTab) { _, newValue in
             container.lifecycleCoordinator.persistTab(newValue)
         }
+        .overlay(alignment: .topTrailing) {
+            Text(container.preferencesStore.currentPreferences.activeRuntimeProfile.name)
+                .font(.caption2.weight(.semibold))
+                .padding(6)
+                .background(.thinMaterial, in: Capsule())
+                .padding(.trailing, 10)
+        }
         .fullScreenCover(isPresented: $showOnboarding) {
             OnboardingView(viewModel: OnboardingViewModel(preferences: container.preferencesStore))
         }

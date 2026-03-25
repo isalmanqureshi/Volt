@@ -15,6 +15,8 @@ final class TradeTicketViewModel: ObservableObject {
     @Published var quantityText: String = ""
     @Published private(set) var latestPrice: Decimal?
     @Published private(set) var estimatedCost: Decimal = 0
+    @Published private(set) var estimatedExecutionPrice: Decimal = 0
+    @Published private(set) var runtimeContextLabel: String = ""
     @Published private(set) var validationState: ValidationState = .invalid("Enter quantity")
     @Published private(set) var isSubmitting = false
     @Published private(set) var submissionError: String?
@@ -127,7 +129,10 @@ final class TradeTicketViewModel: ObservableObject {
             return
         }
 
-        let cost = latestPrice * quantity
+        let slippageBps = preferencesStore.currentPreferences.simulatorRisk.slippagePreset.basisPoints
+        let slippedPrice = side == .buy ? latestPrice * (1 + (slippageBps / 10_000)) : latestPrice * (1 - (slippageBps / 10_000))
+        estimatedExecutionPrice = slippedPrice
+        let cost = slippedPrice * quantity
         estimatedCost = cost
         riskWarning = riskWarningMessage(orderValue: cost)
         if side == .buy, cost > availableCash {
@@ -141,6 +146,7 @@ final class TradeTicketViewModel: ObservableObject {
 
     private func applyRiskDefaults() {
         let preferences = preferencesStore.currentPreferences.simulatorRisk.validated()
+        runtimeContextLabel = "\(preferencesStore.currentPreferences.activeRuntimeProfile.name) • \(preferences.volatilityPreset.title) vol • \(preferences.slippagePreset.title) slip"
         switch preferences.orderSizeMode {
         case .fixedQuantity:
             quantityText = preferences.defaultOrderSizeValue.formatted(.number)
@@ -155,7 +161,15 @@ final class TradeTicketViewModel: ObservableObject {
         guard availableCash > 0 else { return nil }
         let percent = (orderValue / availableCash) * 100
         if percent >= prefs.warningThresholdPercent {
-            return "Order notional is \(percent.formatted(.number.precision(.fractionLength(1...2))))% of available cash."
+            let base = "Order notional is \(percent.formatted(.number.precision(.fractionLength(1...2))))% of available cash."
+            switch prefs.tradeConfirmationMode {
+            case .alwaysConfirm:
+                return base + " Confirmation is required."
+            case .confirmOnlyLarge:
+                return base + " Large-order confirmation mode is active."
+            case .minimal:
+                return base + " Minimal confirmation mode is active."
+            }
         }
         return nil
     }
@@ -183,7 +197,11 @@ struct TradeTicketView: View {
                 TextField("Quantity", text: $viewModel.quantityText)
                     .keyboardType(.decimalPad)
 
+                LabeledContent("Estimated Fill", value: viewModel.estimatedExecutionPrice.formatted(.currency(code: "USD")))
                 LabeledContent("Estimated Value", value: viewModel.estimatedCost.formatted(.currency(code: "USD")))
+                Text(viewModel.runtimeContextLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 LabeledContent("Available Cash", value: viewModel.availableCash.formatted(.currency(code: "USD")))
             }
 

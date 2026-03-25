@@ -1,6 +1,6 @@
 import Foundation
 
-struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryInsightService {
+struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryInsightService, AnalyticsInsightService, HistoryInsightService {
     func makeInsights(summary: PortfolioSummary, positions: [Position], analytics: PortfolioAnalyticsSummary, recentActivity: [ActivityEvent]) -> [PortfolioInsightCard] {
         var cards: [PortfolioInsightCard] = []
 
@@ -43,6 +43,40 @@ struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryI
         }
 
         return Array(cards.prefix(3))
+    }
+
+    func makeInsights(summary: PortfolioAnalyticsSummary, context: RuntimeProfileInsightContext) -> [InsightCardModel] {
+        var cards = [
+            InsightCardModel(
+                id: "runtime",
+                title: "Runtime context",
+                body: "\(context.profileName) profile on \(context.environmentName). Volatility: \(context.volatility.title), slippage: \(context.slippage.title)."
+            )
+        ]
+        let realized = summary.totalRealizedPnL
+        let unrealized = summary.totalUnrealizedPnL
+        cards.append(
+            InsightCardModel(
+                id: "contribution",
+                title: "P&L contribution",
+                body: "Realized contribution is \(realized.formatted(.currency(code: "USD"))) and unrealized contribution is \(unrealized.formatted(.currency(code: "USD")))."
+            )
+        )
+        return cards
+    }
+
+    func makeInsights(orders: [OrderRecord], activity: [ActivityEvent], context: RuntimeProfileInsightContext) -> [InsightCardModel] {
+        guard orders.isEmpty == false || activity.isEmpty == false else {
+            return [InsightCardModel(id: "empty", title: "History context", body: "No activity yet for \(context.profileName) profile.")]
+        }
+        let symbols = Set(orders.map(\.symbol))
+        return [
+            InsightCardModel(
+                id: "activity",
+                title: "Activity breadth",
+                body: "You traded \(symbols.count) symbol(s). Current simulation volatility is \(context.volatility.title)."
+            )
+        ]
     }
 
     func makeRecap(result: TradeExecutionResult, latestSummary: PortfolioSummary) -> TradeRecap {

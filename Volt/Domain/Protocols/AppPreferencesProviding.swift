@@ -7,4 +7,6 @@ protocol AppPreferencesProviding {
     func update(_ mutate: (inout AppPreferences) -> Void)
     func resetOnboarding()
     func completeOnboarding()
+    func selectRuntimeProfile(_ profile: RuntimeProfile)
+    func resetSimulatorControlsToProfileDefaults()
 }

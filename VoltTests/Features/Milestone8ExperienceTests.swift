@@ -18,7 +18,7 @@ final class Milestone8ExperienceTests: XCTestCase {
 
     func testRiskPreferenceDefaultsFlowIntoTradeTicketQuantity() {
         let prefs = InMemoryPreferencesStore(
-            .init(onboardingCompleted: true, aiSummariesEnabled: true, selectedEnvironment: .mock, simulatorRisk: .init(orderSizeMode: .fixedQuantity, defaultOrderSizeValue: 2.5, maxRecommendedPositionPercent: 25, warningThresholdPercent: 10, requiresLargeOrderConfirmation: true, riskWarningsEnabled: true))
+            .init(onboardingCompleted: true, aiSummariesEnabled: true, selectedEnvironment: .mock, simulatorRisk: .init(orderSizeMode: .fixedQuantity, defaultOrderSizeValue: 2.5, maxRecommendedPositionPercent: 25, warningThresholdPercent: 10, requiresLargeOrderConfirmation: true, riskWarningsEnabled: true, slippagePreset: .low, volatilityPreset: .normal, tradeConfirmationMode: .confirmOnlyLarge), activeRuntimeProfileID: RuntimeProfile.conservative.id)
         )
 
         let vm = TradeTicketViewModel(
@@ -34,7 +34,7 @@ final class Milestone8ExperienceTests: XCTestCase {
     }
 
     func testInvalidRiskPreferencesAreValidatedSafely() {
-        let prefs = SimulatorRiskPreferences(orderSizeMode: .fixedQuantity, defaultOrderSizeValue: 0, maxRecommendedPositionPercent: 500, warningThresholdPercent: -1, requiresLargeOrderConfirmation: true, riskWarningsEnabled: true)
+        let prefs = SimulatorRiskPreferences(orderSizeMode: .fixedQuantity, defaultOrderSizeValue: 0, maxRecommendedPositionPercent: 500, warningThresholdPercent: -1, requiresLargeOrderConfirmation: true, riskWarningsEnabled: true, slippagePreset: .off, volatilityPreset: .normal, tradeConfirmationMode: .confirmOnlyLarge)
         let valid = prefs.validated()
         XCTAssertGreaterThan(valid.defaultOrderSizeValue, 0)
         XCTAssertLessThanOrEqual(valid.maxRecommendedPositionPercent, 100)
@@ -87,7 +87,7 @@ final class Milestone8ExperienceTests: XCTestCase {
     }
 
     func testPortfolioViewModelDisablesInsightsWhenPreferenceOff() {
-        let prefs = InMemoryPreferencesStore(.init(onboardingCompleted: true, aiSummariesEnabled: false, selectedEnvironment: .mock, simulatorRisk: .default))
+        let prefs = InMemoryPreferencesStore(.init(onboardingCompleted: true, aiSummariesEnabled: false, selectedEnvironment: .mock, simulatorRisk: .default, activeRuntimeProfileID: RuntimeProfile.conservative.id))
         let vm = PortfolioViewModel(
             portfolioRepository: TestPortfolioRepository(cash: 10_000),
             analyticsService: TestAnalyticsService(),
@@ -169,4 +169,6 @@ private final class InMemoryPreferencesStore: AppPreferencesProviding {
     func update(_ mutate: (inout AppPreferences) -> Void) { var value = subject.value; mutate(&value); value.simulatorRisk = value.simulatorRisk.validated(); subject.send(value) }
     func resetOnboarding() { update { $0.onboardingCompleted = false } }
     func completeOnboarding() { update { $0.onboardingCompleted = true } }
+    func selectRuntimeProfile(_ profile: RuntimeProfile) { update { $0.activeRuntimeProfileID = profile.id; $0.selectedEnvironment = profile.environment; $0.simulatorRisk = profile.simulatorDefaults } }
+    func resetSimulatorControlsToProfileDefaults() { let profile = currentPreferences.activeRuntimeProfile; update { $0.simulatorRisk = profile.simulatorDefaults } }
 }

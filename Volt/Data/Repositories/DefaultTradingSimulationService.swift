@@ -6,20 +6,20 @@ final class DefaultTradingSimulationService: TradingSimulationService {
     private let portfolioRepository: PortfolioRepository
     private let checkpointService: AccountSnapshotCheckpointing?
     private let supportedSymbols: Set<String>
-    private let slippageBps: Decimal
+    private let slippageBpsProvider: () -> Decimal
 
     init(
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
         checkpointService: AccountSnapshotCheckpointing? = nil,
         supportedSymbols: [String],
-        slippageBps: Decimal = 0
+        slippageBpsProvider: @escaping () -> Decimal = { 0 }
     ) {
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.checkpointService = checkpointService
         self.supportedSymbols = Set(supportedSymbols)
-        self.slippageBps = slippageBps
+        self.slippageBpsProvider = slippageBpsProvider
     }
 
     @discardableResult
@@ -58,8 +58,10 @@ final class DefaultTradingSimulationService: TradingSimulationService {
     }
 
     private func applySlippage(to price: Decimal, side: OrderSide) -> Decimal {
+        let slippageBps = slippageBpsProvider()
         guard slippageBps != 0 else { return price }
         let multiplier = (slippageBps / 10_000)
+        AppLogger.portfolio.debug("Applying slippage bps=\(slippageBps.description, privacy: .public)")
         switch side {
         case .buy:
             return price * (1 + multiplier)

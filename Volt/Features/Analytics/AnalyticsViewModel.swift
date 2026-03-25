@@ -14,17 +14,24 @@ final class AnalyticsViewModel: ObservableObject {
     @Published private(set) var performancePoints: [PerformancePoint] = []
     @Published private(set) var dailyBuckets: [DailyPerformanceBucket] = []
     @Published private(set) var realizedDistribution: [RealizedDistributionBucket] = []
+    @Published private(set) var insightCards: [InsightCardModel] = []
 
     private let analyticsService: PortfolioAnalyticsService
     private let onRangeChanged: ((AnalyticsTimeRange) -> Void)?
+    private let preferencesStore: AppPreferencesProviding
+    private let insightService: AnalyticsInsightService
     private var cancellables = Set<AnyCancellable>()
 
     init(
         analyticsService: PortfolioAnalyticsService,
+        preferencesStore: AppPreferencesProviding = UserDefaultsAppPreferencesStore(),
+        insightService: AnalyticsInsightService = LocalInsightSummaryService(),
         initialRange: AnalyticsTimeRange? = nil,
         onRangeChanged: ((AnalyticsTimeRange) -> Void)? = nil
     ) {
         self.analyticsService = analyticsService
+        self.preferencesStore = preferencesStore
+        self.insightService = insightService
         self.onRangeChanged = onRangeChanged
 
         analyticsService.summaryPublisher
@@ -45,6 +52,15 @@ final class AnalyticsViewModel: ObservableObject {
 
         selectedRange = initialRange ?? analyticsService.currentFilter.timeRange
         applyRangeFilter()
+
+        Publishers.CombineLatest(analyticsService.summaryPublisher, preferencesStore.preferencesPublisher)
+            .map { [weak self] summary, prefs in
+                guard let self else { return [] }
+                let ctx = RuntimeProfileInsightContext(profileName: prefs.activeRuntimeProfile.name, environmentName: prefs.selectedEnvironment.displayName, slippage: prefs.simulatorRisk.slippagePreset, volatility: prefs.simulatorRisk.volatilityPreset)
+                return self.insightService.makeInsights(summary: summary, context: ctx)
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$insightCards)
     }
 
     private func applyRangeFilter() {
