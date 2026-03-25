@@ -14,6 +14,7 @@ struct SettingsView: View {
                         Text(profile.name).tag(profile.id)
                     }
                 }
+                .accessibilityIdentifier("settings_profile_picker")
 
                 LabeledContent("Environment", value: viewModel.preferences.selectedEnvironment.displayName)
                 Text(viewModel.preferences.activeRuntimeProfile.subtitle)
@@ -73,8 +74,35 @@ struct SettingsView: View {
                 }
             }
 
+            if viewModel.scenarios.isEmpty == false {
+                Section("Deterministic Demo Scenario") {
+                    Picker("Scenario", selection: Binding(
+                        get: { viewModel.preferences.activeDemoScenarioID ?? "" },
+                        set: viewModel.setScenario
+                    )) {
+                        Text("Off").tag("")
+                        ForEach(viewModel.scenarios) { scenario in
+                            Text(scenario.name).tag(scenario.id)
+                        }
+                    }
+                    .accessibilityIdentifier("settings_scenario_picker")
+
+                    if let active = viewModel.scenarios.first(where: { $0.id == viewModel.preferences.activeDemoScenarioID }) {
+                        Text(active.detail)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
             Section("About / Demo Info") {
-                Text("Volt is a demo trading simulator. It does not connect to brokerage accounts or place real orders.")
+                Text("Volt RC Demo is a simulated crypto trading app. It never places real broker orders.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("Portfolio, trade history, and analytics stay on this device. Market quote seeding may use Twelve Data when available.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text("Offline fallback may use cached or deterministic demo data.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

@@ -45,17 +45,20 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     private let symbols: [String]
     private let defaultCandleOutputSize: Int
     private let reseedInterval: TimeInterval
+    private let cacheStore: MarketCacheStore
     private var cancellables = Set<AnyCancellable>()
     private let startupState = StartupState()
     private var lastBackgroundDate: Date?
 
     private let quotesSubject = CurrentValueSubject<[Quote], Never>([])
     private let seedingStateSubject = CurrentValueSubject<MarketSeedingState, Never>(.idle)
+    private let dataModeSubject = CurrentValueSubject<MarketDataMode, Never>(.liveSeeded)
 
     var quotesPublisher: AnyPublisher<[Quote], Never> { quotesSubject.eraseToAnyPublisher() }
     var tickPublisher: AnyPublisher<MarketTick, Never> { simulationEngine.ticksPublisher }
     var connectionStatePublisher: AnyPublisher<StreamConnectionState, Never> { simulationEngine.connectionStatePublisher }
     var seedingStatePublisher: AnyPublisher<MarketSeedingState, Never> { seedingStateSubject.eraseToAnyPublisher() }
+    var dataModePublisher: AnyPublisher<MarketDataMode, Never> { dataModeSubject.eraseToAnyPublisher() }
 
     init(
         seedProvider: MarketSeedProvider,
@@ -63,7 +66,8 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         simulationEngine: MarketSimulationEngine,
         symbols: [String],
         defaultCandleOutputSize: Int = 90,
-        reseedInterval: TimeInterval = 60 * 8
+        reseedInterval: TimeInterval = 60 * 8,
+        cacheStore: MarketCacheStore = FileBackedMarketCacheStore()
     ) {
         self.seedProvider = seedProvider
         self.historicalDataProvider = historicalDataProvider
@@ -71,6 +75,8 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         self.symbols = symbols
         self.defaultCandleOutputSize = defaultCandleOutputSize
         self.reseedInterval = reseedInterval
+        self.cacheStore = cacheStore
+        quotesSubject.send(cacheStore.loadQuotes())
         bindSimulation()
     }
 
@@ -131,12 +137,17 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         do {
             let initialQuotes = try await seedProvider.fetchInitialQuotes(for: symbols)
             quotesSubject.send(initialQuotes)
+            cacheStore.saveQuotes(initialQuotes)
             if hadSeededBeforeRun && forceReseed {
                 simulationEngine.reseed(with: initialQuotes)
             } else {
                 simulationEngine.start(with: initialQuotes)
             }
             seedingStateSubject.send(.ready)
+            if dataModeSubject.value != .liveSeeded {
+                AppLogger.market.info("Offline fallback deactivated; live seeding restored")
+            }
+            dataModeSubject.send(.liveSeeded)
             AppLogger.market.info("Simulation seeded reason=\(reason, privacy: .public)")
             return true
         } catch {
@@ -145,9 +156,18 @@ final class DefaultMarketDataRepository: MarketDataRepository {
                 AppLogger.market.warning("Seed pipeline cancelled reason=\(reason, privacy: .public)")
                 return false
             }
-            AppLogger.market.error("Failed to fetch seed quotes. Falling back to baseline prices. Error: \(error.localizedDescription, privacy: .public)")
-            let fallback = symbols.map { symbol in
-                Quote(symbol: symbol, lastPrice: defaultFallbackPrice(for: symbol), changePercent: 0, timestamp: Date(), source: "fallback-mock", isSimulated: false)
+            let cachedQuotes = cacheStore.loadQuotes().filter { symbols.contains($0.symbol) }
+            let fallback: [Quote]
+            if cachedQuotes.isEmpty == false {
+                fallback = cachedQuotes
+                dataModeSubject.send(.offlineCached)
+                AppLogger.market.warning("Offline fallback activated with cached quotes reason=\(reason, privacy: .public)")
+            } else {
+                fallback = symbols.map { symbol in
+                    Quote(symbol: symbol, lastPrice: defaultFallbackPrice(for: symbol), changePercent: 0, timestamp: Date(), source: "fallback-deterministic", isSimulated: false)
+                }
+                dataModeSubject.send(.offlineDeterministic)
+                AppLogger.market.warning("Offline fallback activated with deterministic quotes reason=\(reason, privacy: .public)")
             }
             quotesSubject.send(fallback)
             if hadSeededBeforeRun && forceReseed {
@@ -155,6 +175,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
             } else {
                 simulationEngine.start(with: fallback)
             }
+            cacheStore.saveQuotes(fallback)
             seedingStateSubject.send(.fallbackMocked(error.localizedDescription))
             AppLogger.market.warning("Fallback seed quotes activated reason=\(reason, privacy: .public)")
             return true
@@ -172,8 +193,9 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     func watchlistQuotes(for symbols: [String]) -> AnyPublisher<[Quote], Never> {
+        let symbolsSet = Set(symbols)
         quotesPublisher
-            .map { quotes in quotes.filter { symbols.contains($0.symbol) } }
+            .map { quotes in quotes.filter { symbolsSet.contains($0.symbol) } }
             .eraseToAnyPublisher()
     }
 
@@ -183,9 +205,14 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         do {
             let candles = try await historicalDataProvider.fetchRecentCandles(symbol: symbol, interval: "1min", outputSize: effectiveOutputSize)
             let sortedCandles = candles.sorted(by: { $0.timestamp < $1.timestamp })
+            cacheStore.saveCandles(sortedCandles, symbol: symbol)
             AppLogger.market.info("Candle fetch succeeded for \(symbol, privacy: .public)")
             return sortedCandles
         } catch {
+            if let cachedCandles = cacheStore.loadCandles(symbol: symbol), cachedCandles.isEmpty == false {
+                AppLogger.market.warning("Candle fetch fallback to cache for \(symbol, privacy: .public)")
+                return cachedCandles
+            }
             AppLogger.market.error("Candle fetch failed for \(symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
             throw error
         }

@@ -2,6 +2,11 @@ import Foundation
 internal import os
 
 struct FileBackedPortfolioPersistenceStore: PortfolioPersistenceStore {
+    private struct PersistedEnvelope: Codable {
+        var version: Int
+        var state: PersistedPortfolioState
+    }
+
     private let fileURL: URL
     private let fileManager: FileManager
 
@@ -31,7 +36,13 @@ struct FileBackedPortfolioPersistenceStore: PortfolioPersistenceStore {
             let data = try Data(contentsOf: fileURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let state = try decoder.decode(PersistedPortfolioState.self, from: data)
+            let state: PersistedPortfolioState
+            if let envelope = try? decoder.decode(PersistedEnvelope.self, from: data) {
+                state = envelope.state
+            } else {
+                state = try decoder.decode(PersistedPortfolioState.self, from: data)
+                AppLogger.migration.info("Migrated legacy portfolio persistence payload")
+            }
             AppLogger.portfolio.info("Persistence load success")
             return state
         } catch {
@@ -51,7 +62,7 @@ struct FileBackedPortfolioPersistenceStore: PortfolioPersistenceStore {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(state)
+            let data = try encoder.encode(PersistedEnvelope(version: 2, state: state))
             try data.write(to: fileURL, options: .atomic)
             AppLogger.portfolio.info("Persistence save success")
         } catch {

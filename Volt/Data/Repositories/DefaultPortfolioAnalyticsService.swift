@@ -21,6 +21,8 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private var latestActivity: [ActivityEvent] = []
     private var latestRealized: [RealizedPnLEntry] = []
     private var latestSummary: PortfolioSummary = .init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0)
+    private var latestOrdersBySymbol: [String: [OrderRecord]] = [:]
+    private var latestActivityBySymbol: [String: [ActivityEvent]] = [:]
     private var cancellables = Set<AnyCancellable>()
 
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { summarySubject.eraseToAnyPublisher() }
@@ -58,12 +60,8 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
 
     func positionHistory(symbol: String) -> PositionHistorySummary {
         AppLogger.analytics.info("Position history opened for \(symbol, privacy: .public)")
-        let symbolOrders = latestOrders
-            .filter { $0.symbol == symbol }
-            .sorted(by: { $0.executedAt > $1.executedAt })
-        let symbolActivity = latestActivity
-            .filter { $0.symbol == symbol }
-            .sorted(by: { $0.timestamp > $1.timestamp })
+        let symbolOrders = latestOrdersBySymbol[symbol] ?? []
+        let symbolActivity = latestActivityBySymbol[symbol] ?? []
 
         guard symbolOrders.isEmpty == false || symbolActivity.isEmpty == false else {
             return .empty(symbol: symbol)
@@ -125,6 +123,10 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func recompute() {
+        let startedAt = Date()
+        latestOrdersBySymbol = Dictionary(grouping: latestOrders.sorted(by: { $0.executedAt > $1.executedAt }), by: \.symbol)
+        latestActivityBySymbol = Dictionary(grouping: latestActivity.sorted(by: { $0.timestamp > $1.timestamp }), by: \.symbol)
+
         let summary = makeSummary()
         summarySubject.send(summary)
         performanceSubject.send(makePerformancePoints(summary: summary))
@@ -134,6 +136,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         let symbols = Set(latestOrders.map(\.symbol)).union(latestActivity.map(\.symbol))
         availableSymbolsSubject.send(symbols.sorted())
         applyFilter()
+        AppLogger.analytics.debug("Analytics recompute duration=\(Date().timeIntervalSince(startedAt), privacy: .public)s orders=\(latestOrders.count, privacy: .public) activity=\(latestActivity.count, privacy: .public)")
     }
 
     private func applyFilter() {

@@ -13,11 +13,13 @@ struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryI
         )
 
         if let largest = positions.max(by: { ($0.currentPrice * $0.quantity) < ($1.currentPrice * $1.quantity) }) {
+            let totalMarketValue = positions.reduce(Decimal.zero) { $0 + ($1.currentPrice * $1.quantity) }
+            let concentration = totalMarketValue > 0 ? ((largest.currentPrice * largest.quantity) / totalMarketValue) * 100 : 0
             cards.append(
                 PortfolioInsightCard(
                     id: "largest",
                     title: "Largest exposure",
-                    body: "\(largest.symbol) is your largest open position at \((largest.currentPrice * largest.quantity).formatted(.currency(code: "USD")))."
+                    body: "\(largest.symbol) is \((largest.currentPrice * largest.quantity).formatted(.currency(code: "USD"))) (~\(concentration.formatted(.number.precision(.fractionLength(0...1))))% of open exposure)."
                 )
             )
         }
@@ -42,6 +44,19 @@ struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryI
             )
         }
 
+        if analytics.totalClosedTrades >= 3 {
+            let realizedShare = summary.realizedPnL == 0 && summary.unrealizedPnL == 0
+                ? Decimal.zero
+                : (abs(summary.realizedPnL) / (abs(summary.realizedPnL) + abs(summary.unrealizedPnL))) * 100
+            cards.append(
+                PortfolioInsightCard(
+                    id: "pnl-attribution",
+                    title: "P&L attribution",
+                    body: "About \(realizedShare.formatted(.number.precision(.fractionLength(0...1))))% of current P&L comes from realized history versus open positions."
+                )
+            )
+        }
+
         return Array(cards.prefix(3))
     }
 
@@ -62,6 +77,16 @@ struct LocalInsightSummaryService: PortfolioSummaryInsightService, TradeSummaryI
                 body: "Realized contribution is \(realized.formatted(.currency(code: "USD"))) and unrealized contribution is \(unrealized.formatted(.currency(code: "USD")))."
             )
         )
+
+        if let winRate = summary.winRate {
+            cards.append(
+                InsightCardModel(
+                    id: "quality",
+                    title: "Execution quality",
+                    body: "Closed trades: \(summary.totalClosedTrades). Win rate: \((winRate * 100).formatted(.number.precision(.fractionLength(0...1))))%. Interpret with profile slippage \(context.slippage.title)."
+                )
+            )
+        }
         return cards
     }
 

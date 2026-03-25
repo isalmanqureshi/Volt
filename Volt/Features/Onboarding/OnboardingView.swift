@@ -8,7 +8,7 @@ struct OnboardingView: View {
         NavigationStack {
             VStack(spacing: DS.Spacing.lg) {
                 TabView(selection: $viewModel.step) {
-                    page(title: "Welcome to Volt", subtitle: "A simulated crypto trading demo.", detail: "This app is not a broker and does not execute real orders.")
+                    page(title: "Welcome to Volt RC Demo", subtitle: "A simulated crypto trading experience.", detail: "This app is not a broker and does not execute real orders.")
                         .tag(0)
                     page(title: "Market data + simulation", subtitle: "Quotes can be seeded from Twelve Data.", detail: "Order execution remains local and deterministic.")
                         .tag(1)
