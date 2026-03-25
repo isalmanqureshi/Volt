@@ -14,6 +14,11 @@ struct OnboardingView: View {
                         .tag(1)
                     VStack(alignment: .leading, spacing: DS.Spacing.md) {
                         page(title: "Portfolio intelligence", subtitle: "History and analytics stay local.", detail: "You can enable deterministic AI-style summaries from local state.")
+                        Picker("Starter profile", selection: $viewModel.starterProfileID) {
+                            ForEach(RuntimeProfile.all) { profile in
+                                Text(profile.name).tag(profile.id)
+                            }
+                        }
                         Toggle("Enable AI summaries", isOn: $viewModel.enableAISummaries)
                     }
                     .tag(2)

@@ -1,9 +1,18 @@
 import Foundation
 
-protocol EnvironmentProviding {
+protocol EnvironmentProviding: AnyObject {
     var currentEnvironment: TradingEnvironment { get }
+    func updateEnvironment(_ environment: TradingEnvironment)
 }
 
-struct AppEnvironmentProvider: EnvironmentProviding {
-    let currentEnvironment: TradingEnvironment
+final class AppEnvironmentProvider: EnvironmentProviding {
+    private(set) var currentEnvironment: TradingEnvironment
+
+    init(currentEnvironment: TradingEnvironment) {
+        self.currentEnvironment = currentEnvironment
+    }
+
+    func updateEnvironment(_ environment: TradingEnvironment) {
+        currentEnvironment = environment
+    }
 }

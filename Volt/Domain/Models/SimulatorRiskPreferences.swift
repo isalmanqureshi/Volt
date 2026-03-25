@@ -14,6 +14,40 @@ enum OrderSizeMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
+enum SlippagePreset: String, CaseIterable, Codable, Sendable {
+    case off, low, medium, high
+
+    var title: String { rawValue.capitalized }
+    var basisPoints: Decimal {
+        switch self {
+        case .off: 0
+        case .low: 5
+        case .medium: 12
+        case .high: 25
+        }
+    }
+}
+
+enum SimulatorVolatilityPreset: String, CaseIterable, Codable, Sendable {
+    case calm, normal, aggressive
+
+    var title: String { rawValue.capitalized }
+}
+
+enum TradeConfirmationMode: String, CaseIterable, Codable, Sendable {
+    case alwaysConfirm
+    case confirmOnlyLarge
+    case minimal
+
+    var title: String {
+        switch self {
+        case .alwaysConfirm: return "Always Confirm"
+        case .confirmOnlyLarge: return "Only Large Orders"
+        case .minimal: return "Minimal"
+        }
+    }
+}
+
 struct SimulatorRiskPreferences: Codable, Equatable, Sendable {
     var orderSizeMode: OrderSizeMode
     var defaultOrderSizeValue: Decimal
@@ -21,6 +55,9 @@ struct SimulatorRiskPreferences: Codable, Equatable, Sendable {
     var warningThresholdPercent: Decimal
     var requiresLargeOrderConfirmation: Bool
     var riskWarningsEnabled: Bool
+    var slippagePreset: SlippagePreset
+    var volatilityPreset: SimulatorVolatilityPreset
+    var tradeConfirmationMode: TradeConfirmationMode
 
     static let `default` = SimulatorRiskPreferences(
         orderSizeMode: .fixedQuantity,
@@ -28,7 +65,34 @@ struct SimulatorRiskPreferences: Codable, Equatable, Sendable {
         maxRecommendedPositionPercent: 25,
         warningThresholdPercent: 15,
         requiresLargeOrderConfirmation: true,
-        riskWarningsEnabled: true
+        riskWarningsEnabled: true,
+        slippagePreset: .low,
+        volatilityPreset: .normal,
+        tradeConfirmationMode: .confirmOnlyLarge
+    )
+
+    static let conservative = SimulatorRiskPreferences(
+        orderSizeMode: .fixedQuantity,
+        defaultOrderSizeValue: 0.05,
+        maxRecommendedPositionPercent: 15,
+        warningThresholdPercent: 10,
+        requiresLargeOrderConfirmation: true,
+        riskWarningsEnabled: true,
+        slippagePreset: .off,
+        volatilityPreset: .calm,
+        tradeConfirmationMode: .alwaysConfirm
+    )
+
+    static let aggressive = SimulatorRiskPreferences(
+        orderSizeMode: .fixedQuantity,
+        defaultOrderSizeValue: 0.2,
+        maxRecommendedPositionPercent: 40,
+        warningThresholdPercent: 30,
+        requiresLargeOrderConfirmation: false,
+        riskWarningsEnabled: true,
+        slippagePreset: .high,
+        volatilityPreset: .aggressive,
+        tradeConfirmationMode: .minimal
     )
 
     func validated() -> SimulatorRiskPreferences {

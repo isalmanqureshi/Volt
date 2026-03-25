@@ -15,6 +15,8 @@ final class AppContainer: ObservableObject {
     let insightService: LocalInsightSummaryService
     let lifecycleCoordinator: AppLifecycleCoordinator
 
+    private var cancellables = Set<AnyCancellable>()
+
     private init(
         environmentProvider: EnvironmentProviding,
         configuration: AppConfiguration,
@@ -39,32 +41,34 @@ final class AppContainer: ObservableObject {
         self.preferencesStore = preferencesStore
         self.insightService = insightService
         self.lifecycleCoordinator = lifecycleCoordinator
+
+        bindRuntimeProfileChanges()
     }
 
     static func bootstrap() -> AppContainer {
         let configuration = AppConfiguration.current()
-        let environmentProvider = AppEnvironmentProvider(currentEnvironment: configuration.environment)
-        let seedProvider: MarketSeedProvider
-        let historicalDataProvider: HistoricalDataProvider
-        switch environmentProvider.currentEnvironment {
-        case .mock:
-            seedProvider = MockMarketSeedProvider()
-            historicalDataProvider = MockHistoricalDataProvider()
-        case .twelveDataSeededSimulation:
-            seedProvider = TwelveDataMarketSeedProvider(
-                baseURL: configuration.twelveDataBaseURL,
-                apiKey: configuration.twelveDataAPIKey
-            )
-            historicalDataProvider = TwelveDataHistoricalDataProvider(
-                baseURL: configuration.twelveDataBaseURL,
-                apiKey: configuration.twelveDataAPIKey
-            )
-        }
+        let preferencesStore = UserDefaultsAppPreferencesStore()
+        let restoredEnvironment = preferencesStore.currentPreferences.selectedEnvironment
+        let environmentProvider = AppEnvironmentProvider(currentEnvironment: restoredEnvironment)
 
-        let simulationEngine = DefaultMarketSimulationEngine(config: configuration.simulationConfig)
+        let mockSeed = MockMarketSeedProvider()
+        let mockHistory = MockHistoricalDataProvider()
+        let twelveSeed = TwelveDataMarketSeedProvider(
+            baseURL: configuration.twelveDataBaseURL,
+            apiKey: configuration.twelveDataAPIKey
+        )
+        let twelveHistory = TwelveDataHistoricalDataProvider(
+            baseURL: configuration.twelveDataBaseURL,
+            apiKey: configuration.twelveDataAPIKey
+        )
+
+        let simulationEngine = DefaultMarketSimulationEngine(
+            config: configuration.simulationConfig,
+            volatilityPresetProvider: { preferencesStore.currentPreferences.simulatorRisk.volatilityPreset }
+        )
         let marketDataRepository = DefaultMarketDataRepository(
-            seedProvider: seedProvider,
-            historicalDataProvider: historicalDataProvider,
+            seedProvider: SwitchableMarketSeedProvider(preferencesStore: preferencesStore, mock: mockSeed, twelveData: twelveSeed),
+            historicalDataProvider: SwitchableHistoricalDataProvider(preferencesStore: preferencesStore, mock: mockHistory, twelveData: twelveHistory),
             simulationEngine: simulationEngine,
             symbols: configuration.enabledAssets.map(\.symbol),
             defaultCandleOutputSize: configuration.defaultCandleOutputSize
@@ -83,7 +87,8 @@ final class AppContainer: ObservableObject {
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
             checkpointService: checkpointService,
-            supportedSymbols: configuration.enabledAssets.map(\.symbol)
+            supportedSymbols: configuration.enabledAssets.map(\.symbol),
+            slippageBpsProvider: { preferencesStore.currentPreferences.simulatorRisk.slippagePreset.basisPoints }
         )
         let analyticsService = DefaultPortfolioAnalyticsService(
             repository: portfolioRepository,
@@ -91,7 +96,6 @@ final class AppContainer: ObservableObject {
             environmentProvider: environmentProvider
         )
         let csvExportService = DefaultCSVExportService()
-        let preferencesStore = UserDefaultsAppPreferencesStore()
         let insightService = LocalInsightSummaryService()
 
         let lifecycleCoordinator = AppLifecycleCoordinator(
@@ -115,6 +119,19 @@ final class AppContainer: ObservableObject {
         )
     }
 
+    private func bindRuntimeProfileChanges() {
+        preferencesStore.preferencesPublisher
+            .dropFirst()
+            .sink { [weak self] preferences in
+                guard let self, let environmentProvider = self.environmentProvider as? AppEnvironmentProvider else { return }
+                let environment = preferences.selectedEnvironment
+                guard environmentProvider.currentEnvironment != environment else { return }
+                environmentProvider.updateEnvironment(environment)
+                Task { await self.lifecycleCoordinator.applyRuntimeProfileSwitch(to: environment) }
+            }
+            .store(in: &cancellables)
+    }
+
     func makeWatchlistViewModel() -> WatchlistViewModel {
         WatchlistViewModel(marketDataRepository: marketDataRepository, assets: configuration.enabledAssets)
     }
@@ -133,6 +150,7 @@ final class AppContainer: ObservableObject {
             analyticsService: analyticsService,
             csvExportService: csvExportService,
             initialRange: lifecycleCoordinator.restoreHistoryRange(),
+            preferencesStore: preferencesStore,
             onRangeChanged: {[weak self] range in
                 self?.lifecycleCoordinator.persistHistoryRange(range)
             }
@@ -142,6 +160,7 @@ final class AppContainer: ObservableObject {
     func makeAnalyticsViewModel() -> AnalyticsViewModel {
         AnalyticsViewModel(
             analyticsService: analyticsService,
+            preferencesStore: preferencesStore,
             initialRange: lifecycleCoordinator.restoreAnalyticsRange(),
             onRangeChanged: { [weak self]range in
                 self?.lifecycleCoordinator.persistAnalyticsRange(range)

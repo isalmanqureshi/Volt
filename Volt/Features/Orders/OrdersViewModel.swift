@@ -23,10 +23,13 @@ final class OrdersViewModel: ObservableObject {
     @Published private(set) var availableSymbols: [String] = []
     @Published private(set) var exportURL: URL?
     @Published var exportError: String?
+    @Published private(set) var insightCards: [InsightCardModel] = []
 
     private let analyticsService: PortfolioAnalyticsService
     private let csvExportService: CSVExportService
     private let onRangeChanged: ((AnalyticsTimeRange) -> Void)?
+    private let preferencesStore: AppPreferencesProviding
+    private let insightService: HistoryInsightService
     private var rawOrders: [OrderRecord] = []
     private var rawActivity: [ActivityEvent] = []
     private var cancellables = Set<AnyCancellable>()
@@ -35,10 +38,14 @@ final class OrdersViewModel: ObservableObject {
         analyticsService: PortfolioAnalyticsService,
         csvExportService: CSVExportService,
         initialRange: AnalyticsTimeRange? = nil,
+        preferencesStore: AppPreferencesProviding = UserDefaultsAppPreferencesStore(),
+        insightService: HistoryInsightService = LocalInsightSummaryService(),
         onRangeChanged: ((AnalyticsTimeRange) -> Void)? = nil
     ) {
         self.analyticsService = analyticsService
         self.csvExportService = csvExportService
+        self.preferencesStore = preferencesStore
+        self.insightService = insightService
         self.onRangeChanged = onRangeChanged
 
         analyticsService.filteredOrdersPublisher
@@ -69,6 +76,15 @@ final class OrdersViewModel: ObservableObject {
         selectedSymbol = analyticsService.currentFilter.symbol
         selectedEventKinds = analyticsService.currentFilter.eventKinds
         applyFilter()
+
+        Publishers.CombineLatest3(analyticsService.filteredOrdersPublisher, analyticsService.filteredActivityPublisher, preferencesStore.preferencesPublisher)
+            .map { [weak self] orders, activity, prefs in
+                guard let self else { return [] }
+                let ctx = RuntimeProfileInsightContext(profileName: prefs.activeRuntimeProfile.name, environmentName: prefs.selectedEnvironment.displayName, slippage: prefs.simulatorRisk.slippagePreset, volatility: prefs.simulatorRisk.volatilityPreset)
+                return self.insightService.makeInsights(orders: orders, activity: activity, context: ctx)
+            }
+            .receive(on: RunLoop.main)
+            .assign(to: &$insightCards)
     }
 
     func toggleEventKind(_ kind: ActivityEvent.Kind) {

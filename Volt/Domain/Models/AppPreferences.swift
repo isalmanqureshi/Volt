@@ -5,11 +5,17 @@ struct AppPreferences: Codable, Equatable, Sendable {
     var aiSummariesEnabled: Bool
     var selectedEnvironment: TradingEnvironment
     var simulatorRisk: SimulatorRiskPreferences
+    var activeRuntimeProfileID: String
+
+    var activeRuntimeProfile: RuntimeProfile {
+        RuntimeProfile.resolve(id: activeRuntimeProfileID)
+    }
 
     static let `default` = AppPreferences(
         onboardingCompleted: false,
         aiSummariesEnabled: true,
-        selectedEnvironment: .mock,
-        simulatorRisk: .default
+        selectedEnvironment: RuntimeProfile.balanced.environment,
+        simulatorRisk: RuntimeProfile.balanced.simulatorDefaults,
+        activeRuntimeProfileID: RuntimeProfile.balanced.id
     )
 }

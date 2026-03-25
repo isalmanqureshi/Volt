@@ -55,6 +55,18 @@ struct OrdersView: View {
                 }
             }
 
+
+            if viewModel.insightCards.isEmpty == false {
+                Section("Insights") {
+                    ForEach(viewModel.insightCards) { card in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(card.title).font(.subheadline.weight(.semibold))
+                            Text(card.body).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
             Section("Export") {
                 Picker("Preset", selection: $viewModel.selectedExportPreset) {
                     ForEach(AnalyticsExportPreset.allCases, id: \.self) { preset in

@@ -4,6 +4,7 @@ import Foundation
 final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     private let config: PriceSimulationConfig
     private let clock: ClockProviding
+    private let volatilityPresetProvider: () -> SimulatorVolatilityPreset
     private var prices: [String: Decimal] = [:]
     private var timerCancellable: AnyCancellable?
 
@@ -13,9 +14,14 @@ final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     var ticksPublisher: AnyPublisher<MarketTick, Never> { tickSubject.eraseToAnyPublisher() }
     var connectionStatePublisher: AnyPublisher<StreamConnectionState, Never> { stateSubject.eraseToAnyPublisher() }
 
-    init(config: PriceSimulationConfig = .default, clock: ClockProviding = SystemClock()) {
+    init(
+        config: PriceSimulationConfig = .default,
+        clock: ClockProviding = SystemClock(),
+        volatilityPresetProvider: @escaping () -> SimulatorVolatilityPreset = { .normal }
+    ) {
         self.config = config
         self.clock = clock
+        self.volatilityPresetProvider = volatilityPresetProvider
     }
 
     func start(with seedQuotes: [Quote]) {
@@ -67,10 +73,19 @@ final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     }
 
     private var profileMultiplier: Decimal {
+        let base: Decimal
         switch config.volatilityProfile {
-        case .low: return 0.5
-        case .medium: return 1.0
-        case .high: return 1.5
+        case .low: base = 0.5
+        case .medium: base = 1.0
+        case .high: base = 1.5
         }
+
+        let runtime: Decimal
+        switch volatilityPresetProvider() {
+        case .calm: runtime = 0.7
+        case .normal: runtime = 1.0
+        case .aggressive: runtime = 1.4
+        }
+        return base * runtime
     }
 }
