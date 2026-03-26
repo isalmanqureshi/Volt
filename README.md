@@ -58,6 +58,13 @@ A few things worth calling out:
 
 ---
 
+
+## Architecture
+
+For a deeper technical walkthrough of runtime/data-flow/concurrency/persistence design, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+---
+
 ## Getting started
 
 **Prerequisites:**
@@ -144,10 +151,6 @@ Candle fetches fall back to cached candles the same way. The app never just sits
 ```bash
 # In Xcode
 ⌘U
-
-# CLI
-xcodebuild test -project Volt.xcodeproj -scheme Volt \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
 **What's covered:**
@@ -231,4 +234,8 @@ A few things to keep in mind:
 
 ---
 
-> **No license file is currently present in this repo.** Add a `LICENSE` before any external redistribution.
+## License
+
+This project is licensed under the Apache License 2.0 (`Apache-2.0`). See [`LICENSE`](LICENSE).
+
+Apache-2.0 includes an express patent license from contributors (see Section 3 of `LICENSE`).
