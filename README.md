@@ -1,484 +1,234 @@
-# Volt RC Demo (SwiftUI iOS Crypto Trading Simulator)
+# Volt RC — iOS Crypto Trading Simulator
 
-Volt is an iOS SwiftUI crypto trading **demo simulator** built for architecture demos, product walkthroughs, and engineering exercises. It is **not** a real brokerage client, does not connect to broker accounts, and never places live market orders. The app targets modern iOS (project currently configured for iOS 26.2 in Xcode project settings) and uses SwiftUI, Combine, async/await, and Swift Charts. Market quotes/candles can be seeded from Twelve Data, while order execution and portfolio state transitions are simulated locally on-device.
+Volt is a full-featured crypto trading simulator built with SwiftUI. It's designed for architecture demos, product walkthroughs, and engineering exercises — **not** real trading. No broker accounts, no live orders, no financial risk. Just a clean, realistic simulation you can run entirely on-device.
 
----
-
-## 1) Product overview
-
-### Purpose
-Volt demonstrates a complete trading-product surface area (watchlist → detail chart → trade ticket → portfolio/history/analytics/settings) with deterministic behavior suitable for demos and tests.
-
-### Why Twelve Data is used
-Twelve Data is used only for:
-- initial quote seeding (`/quote`) at startup/refresh
-- historical candle seeding (`/time_series`) for detail charts
-
-Execution logic (fills, positions, P&L, cash changes) remains local in `DefaultTradingSimulationService` + `InMemoryPortfolioRepository`.
-
-### Seeded simulation model (high level)
-1. App starts and requests seeded quotes for configured symbols.
-2. A local simulation engine begins 1-second tick updates from those seed prices.
-3. Portfolio valuation listens to the shared quote stream.
-4. Trades are validated and filled locally (with configurable slippage).
-5. Portfolio/history/analytics update from the same local state.
-
-### What users can do
-- Browse a crypto watchlist and refresh quotes
-- Open asset detail and view 1-minute candle charts
-- Submit buy/sell simulated market orders
-- Track open positions, unrealized and realized P&L
-- Review order/activity history with filtering and CSV export
-- Review analytics charts and summary metrics
-- Use onboarding, runtime profiles, simulator controls, and deterministic demo scenarios
-
-### Who this repo is for
-- iOS engineers onboarding into a feature-rich SwiftUI app
-- architecture reviewers evaluating data flow and boundaries
-- internal demo users/stakeholders validating scope and UX
-- contributors extending simulation, analytics, and runtime controls safely
+> **Quick disclaimer:** Volt is a demo app. It doesn't execute real trades and isn't financial advice.
 
 ---
 
-## 2) Core features
+## What is Volt?
 
-- **Watchlist**
-  - Quote list for configured symbols
-  - Pull-to-refresh / manual refresh
-  - Data mode banner: live seeded vs offline cached vs offline deterministic
+Think of Volt as a complete trading app — watchlist, charts, trade tickets, portfolio, history, analytics — where all the execution happens locally. Market quotes can be seeded from [Twelve Data](https://twelvedata.com) to keep things feeling realistic, but the moment you hit "Buy" or "Sell," everything is handled on-device by a local simulation engine.
 
-- **Asset detail + Swift Charts**
-  - Quote header + live status
-  - 1-minute candlestick chart (`CandlestickChartView`)
-  - Candle fetch fallback to local cache
-
-- **Trade ticket**
-  - Buy/sell market order form
-  - Estimated fill price including slippage preset
-  - Risk warning thresholds and confirmation-mode messaging
-  - Local trade recap text after fills
-
-- **Simulated order execution**
-  - Symbol validation, quantity validation, cash/position checks
-  - Local slippage application
-  - Fills mutate in-memory portfolio + persisted state
-
-- **Portfolio + unrealized P&L**
-  - Shared quote-driven mark-to-market valuation
-  - Open positions and equity summary
-  - Optional local “AI-style” insight cards
-
-- **History / orders / realized P&L**
-  - Orders and activity segments
-  - Time/symbol/event filters
-  - Symbol drill-down to position history
-
-- **Analytics + export**
-  - Equity curve, daily realized buckets, realized distribution
-  - Summary metrics (win rate, PF, net return, etc.)
-  - CSV export presets: order history, realized ledger, summary, full activity
-
-- **Runtime profiles + simulator controls**
-  - Conservative / Balanced / Aggressive runtime profiles
-  - Environment switching (`mock` vs `twelveDataSeededSimulation`)
-  - Slippage, volatility, warnings, default order sizing controls
-
-- **Onboarding + settings**
-  - Multi-step onboarding with profile + insights preferences
-  - Settings for experience controls and deterministic scenarios
-
-- **Offline fallback + deterministic scenarios**
-  - Fallback to cached quotes when seeding fails
-  - Deterministic quote fallback if cache is unavailable
-  - Deterministic scenario bootstrap for demos and tests
+This makes it great for:
+- iOS engineers getting up to speed on a real SwiftUI codebase
+- Architecture reviewers who want to trace data flow end-to-end
+- Internal stakeholders doing product walkthroughs or demos
+- Contributors looking for a well-structured base to extend
 
 ---
 
-## 3) Architecture overview
+## What you can do in the app
 
-Volt follows a feature-oriented SwiftUI app architecture with explicit domain protocols and concrete data-layer implementations.
+- **Watchlist** — Browse live or seeded quotes for your configured symbols, pull-to-refresh, and see a clear banner showing whether you're in live, cached, or offline mode.
+- **Asset detail + charts** — Tap any asset to see a quote header and a 1-minute candlestick chart (Swift Charts). Falls back to cached candles gracefully if the network is unavailable.
+- **Trade ticket** — Submit buy or sell market orders with estimated fill prices (including slippage), risk warnings, and a post-fill recap.
+- **Portfolio** — See your open positions with real-time unrealized P&L, all driven from the same shared quote stream.
+- **History** — Review filled orders and activity, filter by symbol or event type, and export to CSV.
+- **Analytics** — Equity curve, daily P&L buckets, win rate, profit factor, and more.
+- **Settings** — Switch between runtime profiles (Conservative / Balanced / Aggressive), adjust slippage and volatility, enable deterministic demo scenarios, and more.
 
-### High-level structure
+---
 
-```text
+## How it's built
+
+Volt follows a feature-oriented SwiftUI architecture with clear domain boundaries.
+
+```
 Volt/
-  App/                    # RootTab, lifecycle orchestration, navigation routes
-  Core/
-    DI/                   # AppContainer dependency wiring
-    Environment/          # runtime config, environment, supported assets
-    Preferences/          # UserDefaults-backed app preferences
-    Logging/ Utilities/
-  Domain/
-    Models/               # entities, enums, persisted state, analytics models
-    Protocols/            # repositories/services contracts
-  Data/
-    Providers/
-      TwelveData/         # quote + candle seed providers
-      Mock/               # mock seed/historical providers
-    Repositories/         # market/portfolio/trading/analytics/checkpoint services
-    Persistence/          # file-backed state/cache/checkpoint/export stores
-    Insights/             # local insight generation
-    DTOs/ Mappers/
-  Features/
-    Watchlist/ AssetDetail/ TradeTicket/ ClosePosition/
-    Portfolio/ Orders/ PositionHistory/ Analytics/
-    Onboarding/ Settings/ Shared/ DesignSystem/
-VoltTests/
-VoltUITests/
+  App/           # Root tab, lifecycle, navigation
+  Core/          # DI, runtime config, preferences, logging
+  Domain/        # Models + protocols (no UI, no data layer details)
+  Data/          # Providers, repositories, simulation, persistence
+  Features/      # SwiftUI views + view models, one folder per screen
 ```
 
-### Separation of concerns
-- **Domain**: models + protocols only (no UI details).
-- **Data**: implementations for providers, repositories, simulation, persistence.
-- **Features**: SwiftUI views and view models per screen.
-- **Core/DI**: single bootstrap point (`AppContainer.bootstrap()`).
+**The short version of how data flows:**
 
-### Shared quote-driven valuation model
-`InMemoryPortfolioRepository` subscribes to shared `quotesPublisher` and recalculates all open positions and portfolio summary whenever quotes change. This centralizes unrealized P&L logic and prevents each feature from inventing its own valuation.
+1. App launches → market data repository seeds quotes from Twelve Data (or mock/cache).
+2. A local simulation engine picks up those seed prices and emits 1-second ticks.
+3. The shared quote stream drives watchlist, detail, and portfolio valuation simultaneously.
+4. When you place a trade, the local trading service validates and fills it, mutating the in-memory portfolio.
+5. Everything persists to JSON files in app support so state survives relaunches.
 
-### Twelve Data vs local execution engine
-- Twelve Data providers seed input market data only.
-- Local simulation engine (`DefaultMarketSimulationEngine`) drives ongoing ticks.
-- Trading service (`DefaultTradingSimulationService`) validates and fills orders locally.
-
-### Repository/service/view model interaction
-1. View models subscribe to repository/service publishers.
-2. User actions call view model intents.
-3. View models delegate mutations to domain services.
-4. Services update repositories.
-5. Repositories publish updated state to all subscribers.
-
-### Persistence location
-Primary persisted artifacts are JSON files in app support under `.../Application Support/Volt/`:
-- `portfolio_state.json`
-- `market_cache.json`
-- `account_snapshot_checkpoints.json`
-
-Preferences and UI restoration use `UserDefaults` keys.
-
-### Runtime profiles + deterministic scenarios
-- Runtime profiles map to environment + simulator defaults.
-- Scenario bootstrap swaps portfolio state to deterministic snapshots and marks scenario ID in preferences.
+A few things worth calling out:
+- **One quote stream, one valuation source.** `InMemoryPortfolioRepository` subscribes to the shared quote publisher and recomputes unrealized P&L centrally. No screen invents its own valuation logic.
+- **Twelve Data is seeding only.** It provides input prices at startup. All execution logic is local.
+- **Startup is deduplicated.** The market repository guards against duplicate concurrent seed pipelines, and the simulation engine prevents duplicate tick loops.
 
 ---
 
-## 4) How data moves through the app
+## Getting started
 
-1. **Initial seed flow**
-   - `VoltApp` launches → `AppLifecycleCoordinator.onLaunch()` → `marketDataRepository.start()`.
-   - Seed provider fetches quotes (Twelve Data or mock provider via switchable provider).
-
-2. **Simulation flow**
-   - Seed quotes start/reseed `DefaultMarketSimulationEngine`.
-   - Engine emits periodic simulated ticks.
-
-3. **Quote update flow**
-   - Repository merges ticks into quote stream.
-   - Watchlist/detail screens receive updates via publishers.
-
-4. **Portfolio valuation flow**
-   - Portfolio repository recalculates current prices and unrealized P&L from shared quote stream.
-
-5. **History + analytics flow**
-   - Filled orders append order records, activity events, realized entries.
-   - Analytics service recomputes derived summaries/buckets and publishes filtered outputs.
-
-6. **Persistence + reload flow**
-   - Portfolio updates persist to file-backed store.
-   - Checkpoint snapshots persist asynchronously.
-   - Relaunch restores persisted portfolio/checkpoints/preferences.
-
-7. **Offline fallback path**
-   - Seeding failure → cached quotes if present (`offlineCached`)
-   - else deterministic quote defaults (`offlineDeterministic`)
-   - chart fetch failures fall back to cached candles when available
-
----
-
-## 5) Getting started
-
-### Prerequisites
-- Xcode with iOS SDK compatible with this project (project setting currently uses iOS deployment target `26.2`)
+**Prerequisites:**
+- Xcode with an iOS SDK compatible with this project (configured for iOS 26.2 deployment target)
 - macOS capable of running iOS Simulator
-- Optional Twelve Data API key for live seeding
+- (Optional) A Twelve Data API key for live seeding
 
-### Clone and open
+**Clone and run:**
 ```bash
 git clone <repo-url>
 cd Volt
 open Volt.xcodeproj
 ```
 
-### Run from Xcode
-1. Select `Volt` scheme.
-2. Choose an iOS Simulator device.
-3. Run (`⌘R`).
+Select the `Volt` scheme, pick a simulator, and hit `⌘R`.
 
-### Configure market-data seeding
-Set environment variables in your scheme (`Product > Scheme > Edit Scheme... > Run > Environment Variables`):
+**Environment variables** (set under `Product > Scheme > Edit Scheme > Run > Environment Variables`):
 
-- `TWELVE_DATA_API_KEY` = your API key (optional but required for Twelve Data requests)
-- `TWELVE_DATA_BASE_URL` = defaults to `https://api.twelvedata.com`
-- `VOLT_ENV` = `mock` or `twelveDataSeededSimulation`
-- `VOLT_SYMBOLS` = comma-separated symbols (e.g., `BTC/USD,ETH/USD,SOL/USD`)
+| Variable | Purpose |
+|---|---|
+| `TWELVE_DATA_API_KEY` | Your Twelve Data key (optional; omitting it triggers offline fallback) |
+| `TWELVE_DATA_BASE_URL` | Defaults to `https://api.twelvedata.com` |
+| `VOLT_ENV` | `mock` or `twelveDataSeededSimulation` |
+| `VOLT_SYMBOLS` | Comma-separated symbols, e.g. `BTC/USD,ETH/USD,SOL/USD` |
 
-If no API key is set while using Twelve Data mode, app startup falls back to cached/deterministic data.
-
-### Mock vs seeded simulation
-- **Mock mode**: set `VOLT_ENV=mock` or choose Conservative profile.
-- **Twelve Data seeded simulation**: set `VOLT_ENV=twelveDataSeededSimulation` and provide API key.
-
-### Deterministic demo scenarios
-From **Settings > Deterministic Demo Scenario**, select:
-- Empty New User
-- Balanced Starter
-- Analytics Rich
-
-This replaces portfolio state with deterministic snapshots and refreshes market data.
-
-### Reset local state for testing
-- UI tests use launch arg `UITEST_RESET` to clear key `UserDefaults` entries.
-- Manual reset options:
-  - Settings: restart onboarding / scenario off
-  - Delete app from simulator/device to clear app support + defaults entirely
+If you just want to poke around without an API key, set `VOLT_ENV=mock` (or pick the Conservative profile in Settings) and everything runs from local mock data.
 
 ---
 
-## 6) Configuration
+## Demo scenarios
 
-### Runtime environments and profiles
-- `TradingEnvironment`: `mock`, `twelveDataSeededSimulation`
-- Profiles: Conservative, Balanced, Aggressive
-- Profile switch updates environment + simulator defaults, then orchestrates reseed/refresh
+Volt has three built-in deterministic scenarios you can load from **Settings > Deterministic Demo Scenario**:
 
-### Simulator controls
-Configurable in Settings:
-- slippage preset
-- volatility preset
-- confirmation mode
-- risk warnings and threshold
-- order-size defaults + reset to profile defaults
+- **Empty New User** — clean slate, no history
+- **Balanced Starter** — some positions, a bit of history
+- **Analytics Rich** — lots of trades and history for showcasing the analytics screen
 
-### Seeded simulation behavior
-- Startup seed once; guarded against duplicate concurrent startup pipelines.
-- Manual refresh and stale-resume paths can force reseed.
-
-### Settings/preferences that affect behavior
-Persisted preferences include:
-- onboarding completion
-- local AI summary enabled/disabled
-- selected environment/profile
-- simulator risk preferences
-- active deterministic scenario ID
-
-### Where config lives
-- Runtime env + symbols + API keys: `AppConfiguration.current()`
-- User-tunable runtime prefs: `UserDefaultsAppPreferencesStore`
+Each scenario replaces the local portfolio state with a fixed snapshot, so demos are reproducible. Set it back to "Off" in Settings to return to a normal empty-user state.
 
 ---
 
-## 7) Testing
+## Configuration and runtime profiles
 
-### Test targets
-- `VoltTests`: domain/data/viewmodel/repository coverage
-- `VoltUITests`: onboarding/tab/settings/scenario flows
+Profiles are the highest-level knob. Switching profiles updates the environment and simulator defaults in one shot:
 
-### What is covered
-- DTO decoding and mapping (Twelve Data)
-- market repository seeding/fallback behavior
-- portfolio persistence and migration compatibility
-- analytics recompute/filter behavior
-- runtime profile and onboarding preference flows
-- deterministic scenario catalog stability
-- UI flow checks including large text navigation path
+| Profile | Environment | Use case |
+|---|---|---|
+| Conservative | Mock | Fully offline, great for demos without network |
+| Balanced | Twelve Data seeded | Normal usage with live-seeded prices |
+| Aggressive | Twelve Data seeded | Higher volatility + slippage presets |
 
-### Running tests
-In Xcode: Product > Test (`⌘U`)
+Beyond profiles, you can tune slippage, volatility, confirmation mode, risk warning thresholds, and default order sizing directly in Settings.
 
-or CLI:
+---
+
+## Persistence
+
+Volt stores three things locally (under `.../Application Support/Volt/`):
+
+- `portfolio_state.json` — positions, order history, realized P&L, cash balance
+- `market_cache.json` — latest quotes + candle cache per symbol
+- `account_snapshot_checkpoints.json` — equity/cash/P&L timeline snapshots
+
+Preferences and UI state live in `UserDefaults`. The portfolio store supports schema migration (currently on version 2), so state from older builds survives upgrades.
+
+To reset during development: delete the app from the simulator, or clear `volt.app_preferences` and `volt.ui_restoration` from UserDefaults manually.
+
+---
+
+## Offline behavior
+
+If Twelve Data seeding fails (network down, missing API key, rate limit), Volt degrades gracefully:
+
+1. Uses cached quotes if any are available → shows `offlineCached` banner
+2. Falls back to deterministic synthetic prices if no cache → shows `offlineDeterministic` banner
+3. Simulation continues from the fallback seed so the app stays fully interactive
+
+Candle fetches fall back to cached candles the same way. The app never just sits broken.
+
+---
+
+## Testing
+
 ```bash
-xcodebuild test -project Volt.xcodeproj -scheme Volt -destination 'platform=iOS Simulator,name=iPhone 16'
+# In Xcode
+⌘U
+
+# CLI
+xcodebuild test -project Volt.xcodeproj -scheme Volt \
+  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
-### Pre-merge verification priorities
-- quote-seeding + fallback mode behavior
-- trade execution correctness (cash/qty checks, slippage application)
-- shared quote-driven valuation consistency
-- persistence compatibility and migration safety
-- deterministic scenario behavior
+**What's covered:**
+- DTO decoding and mapping (Twelve Data)
+- Market repository seeding and fallback behavior
+- Portfolio persistence and migration compatibility
+- Analytics recompute and filtering
+- Runtime profile and onboarding preference flows
+- Deterministic scenario catalog stability
+- UI flows including large Dynamic Type navigation paths
+
+UI tests use the `UITEST_RESET` launch argument to clear UserDefaults before each run.
+
+**Key things to protect when contributing:**
+- Quote seeding + fallback mode correctness
+- Trade execution math (cash checks, qty validation, slippage)
+- Shared quote-driven valuation consistency
+- Persistence compatibility across schema versions
+- Deterministic scenario reproducibility
 
 ---
 
-## 8) Performance and concurrency notes
+## Analytics and insights
 
-- **Shared repositories** reduce duplicated work: one market stream and one portfolio valuation source feed all tabs.
-- **Startup deduping**: `DefaultMarketDataRepository.StartupState` prevents duplicate seed pipelines.
-- **Simulation deduping**: `DefaultMarketSimulationEngine` guards tick loop creation (`tickTask == nil`) and cancels on stop/deinit.
-- **Checkpoint throttling**: checkpoint service throttles periodic/resume checkpoints with a minimum interval and max retained count.
-- **Analytics compute queue**: heavy analytics recompute happens on a dedicated utility queue.
+The analytics screen surfaces: equity curve, daily realized P&L buckets, realized-outcome distribution, win rate, profit factor, net return, and closed trade count.
 
-When debugging lag/races:
-1. Check startup/refresh sequencing in `DefaultMarketDataRepository` and `AppLifecycleCoordinator`.
-2. Check simulation task lifecycle in `DefaultMarketSimulationEngine`.
-3. Check analytics structural recompute logging and filter updates in `DefaultPortfolioAnalyticsService`.
-4. Check checkpoint write pressure in `DefaultAccountSnapshotCheckpointService`.
+The "AI-style" insight cards throughout the app are generated by `LocalInsightSummaryService` — rule and template based, running fully on-device with no remote LLM calls. Quality improves with more local trade history.
 
 ---
 
-## 9) Persistence and migration
+## Troubleshooting
 
-### Persisted locally
-- Portfolio state: open positions, order history, realized P&L history, activity timeline, cash balance
-- Market cache: latest quotes + candle cache per symbol
-- Snapshot checkpoints: equity/cash/P&L timeline + trigger metadata
-- User preferences + UI restoration ranges/tab
+**Watchlist shows fallback mode / seeding failed**
+→ Set `TWELVE_DATA_API_KEY` in your scheme, or switch to `VOLT_ENV=mock`.
 
-### Storage mechanisms
-- File-backed JSON stores in app support (`Volt/` subdirectory)
-- UserDefaults for preferences/UI state keys
+**Symbols not loading**
+→ Check that `VOLT_SYMBOLS` uses the right format (`BTC/USD,ETH/USD,...`) and that your Twelve Data plan covers those symbols.
 
-### Migration/versioning present
-- Portfolio store supports legacy raw payload decode and wrapped envelope (versioned envelope currently `version: 2`).
-- Preferences store supports legacy v1 decode and maps into current schema (`AppPreferences.schemaVersion = 2`).
+**Stale portfolio state from a previous session**
+→ Delete the app from the simulator to clear everything, or disable the active deterministic scenario in Settings.
 
-### Clearing state during development
-- Delete app from simulator/device
-- Or clear specific defaults keys:
-  - `volt.app_preferences`
-  - `volt.ui_restoration`
+**Tests failing unexpectedly**
+→ Confirm the simulator destination matches and that `UITEST_RESET` is set in the UI test scheme.
 
 ---
 
-## 10) Offline and fallback behavior
+## Performance notes
 
-If Twelve Data requests fail (including missing API key):
-1. Use cached quotes if available (`offlineCached`)
-2. Else synthesize deterministic symbol fallback quotes (`offlineDeterministic`)
-3. Continue simulation from fallback seed so app remains interactive
+- Heavy analytics recompute runs on a dedicated background queue.
+- Checkpoint writes are throttled with a minimum interval and max retained count.
+- The simulation engine and market repository both guard against duplicate task creation.
 
-For candles:
-- failed network fetch falls back to cached candles when present
-
-### Limitations in offline mode
-- quote freshness may be stale (cached)
-- deterministic fallback prices are synthetic
-- analytics reflect local simulated/history state, not external account truth
+If you're debugging lag or race conditions, the most useful starting points are: `DefaultMarketDataRepository`, `DefaultMarketSimulationEngine`, `DefaultPortfolioAnalyticsService`, and `DefaultAccountSnapshotCheckpointService`.
 
 ---
 
-## 11) Analytics and insight engine
+## Contributing
 
-### Analytics available
-- portfolio summary metrics (realized/unrealized/closed trades/win rate/PF)
-- equity curve points
-- daily realized P&L buckets
-- realized-outcome distribution
-- filtered order/activity views
+A few things to keep in mind:
 
-### Insight summaries
-“AI-style” summaries are generated by `LocalInsightSummaryService` from local in-memory/persisted data only (no remote LLM calls).
-
-- Portfolio insights: equity recap, concentration, trade pattern, recent activity, attribution
-- Analytics insights: runtime context + contribution/quality cards
-- History insights: activity breadth cards
-- Trade recap: post-fill summary sentence
-
-### Limitations
-- Rule/template-based summarization (not model-based reasoning)
-- Quality depends on local history volume and scenario state
+- **Respect the architecture boundaries.** Domain protocols stay pure (no UI, no I/O). Data layer implements them. Feature view models consume them.
+- **Don't introduce a second source of market or portfolio truth.** The shared quote stream and `InMemoryPortfolioRepository` are the canonical sources.
+- **Keep business logic out of SwiftUI view structs.** If it's testable logic, it belongs in a view model or service.
+- **Write tests for behavior changes** and update this README when runtime behavior or persistence contracts change.
 
 ---
 
-## 12) Accessibility and UX quality notes
+## Quick file reference
 
-Observed UX patterns:
-- broad use of `ContentUnavailableView` for empty/loading states
-- visible fallback/offline messaging in Watchlist footer
-- support for large Dynamic Type flow is explicitly UI-tested (`UICTContentSizeCategoryAccessibilityL` path)
-- accessibility identifiers are provided for key UI test selectors (e.g., scenario picker/data mode label)
-
-Release-candidate polish areas to keep protecting:
-- explicit state messaging (seeding/fallback/error)
-- deterministic startup/reset behavior for demos/tests
-- stable navigation around onboarding/profile switching
-
----
-
-## 13) Limitations and disclaimers
-
-- This app is a **demo simulator**, not a broker integration.
-- It does **not** execute real trades and is **not** financial advice.
-- Market data can be seeded from Twelve Data, but execution is local only.
-- Analytics/history fidelity is bounded by local state, persisted checkpoints, and selected deterministic scenarios.
+| What | Where |
+|---|---|
+| App bootstrap | `Volt/VoltApp.swift`, `Volt/Core/DI/AppContainer.swift` |
+| Runtime config | `Volt/Core/Environment/AppConfiguration.swift` |
+| Market seeding + fallback | `Volt/Data/Repositories/DefaultMarketDataRepository.swift` |
+| Simulation engine | `Volt/Data/Repositories/DefaultMarketSimulationEngine.swift` |
+| Trade execution | `Volt/Data/Repositories/DefaultTradingSimulationService.swift` |
+| Portfolio valuation | `Volt/Data/Repositories/InMemoryPortfolioRepository.swift` |
+| Analytics | `Volt/Data/Repositories/DefaultPortfolioAnalyticsService.swift` |
+| Runtime profiles | `Volt/Domain/Models/RuntimeProfile.swift` |
+| Demo scenarios | `Volt/Domain/Models/DemoScenario.swift`, `Volt/Data/Repositories/DefaultDemoScenarioBootstrapService.swift` |
 
 ---
 
-## 14) Roadmap / future work
-
-Potential next steps that align with current architecture:
-- Add streaming provider abstraction (WebSocket) while preserving seeded+simulated mode.
-- Expand analytics export/report formats beyond CSV presets.
-- Add deeper risk and exposure analytics per symbol/profile.
-- Harden packaging/release pipeline for distribution (signing, QA matrix, telemetry policy).
-- Optional abstraction for remote insight provider while keeping local deterministic fallback.
-
----
-
-## 15) Contributing guidance
-
-When contributing:
-- Keep architecture boundaries intact (Domain protocols, Data implementations, Feature view models).
-- Avoid introducing duplicate market/portfolio state sources.
-- Keep business logic out of SwiftUI view structs.
-- Prefer deterministic, testable logic and add/adjust tests with behavior changes.
-- Preserve the shared quote-driven valuation pathway.
-- Update docs (including this README) whenever runtime behavior or persistence contracts change.
-
----
-
-## 16) Troubleshooting
-
-### Missing API key
-- Symptom: seeding fails, watchlist shows fallback mode.
-- Fix: set `TWELVE_DATA_API_KEY` in scheme or switch to mock environment/profile.
-
-### No market seed data
-- Verify `VOLT_SYMBOLS` format (`BTC/USD,ETH/USD,...`) and symbol support list.
-- Check network availability and Twelve Data status/limits.
-
-### Offline fallback activated
-- Expected when seed provider errors.
-- App continues with cached/deterministic data; pull-to-refresh retries.
-
-### Stale local persisted state
-- Delete app or clear defaults keys, then relaunch.
-- Disable deterministic scenario if you expect a clean account.
-
-### Deterministic scenario confusion
-- Scenario selection replaces entire portfolio state.
-- Set scenario to “Off” in Settings to return to default empty-new-user state.
-
-### Tests failing due to local state/config
-- Ensure UI tests launch with `UITEST_RESET` as configured.
-- Confirm simulator destination and environment variables are consistent.
-
----
-
-## 17) License / repository notes
-
-No license file is currently present in this repository root. Add a `LICENSE` file before external redistribution.
-
----
-
-## 18) Quick reference (important files)
-
-- App bootstrap: `Volt/VoltApp.swift`, `Volt/Core/DI/AppContainer.swift`
-- Runtime config: `Volt/Core/Environment/AppConfiguration.swift`
-- Market seeding/fallback: `Volt/Data/Repositories/DefaultMarketDataRepository.swift`
-- Simulation engine: `Volt/Data/Repositories/DefaultMarketSimulationEngine.swift`
-- Local execution: `Volt/Data/Repositories/DefaultTradingSimulationService.swift`
-- Portfolio valuation/persistence: `Volt/Data/Repositories/InMemoryPortfolioRepository.swift`
-- Analytics service: `Volt/Data/Repositories/DefaultPortfolioAnalyticsService.swift`
-- Preferences/runtime profiles: `Volt/Core/Preferences/UserDefaultsAppPreferencesStore.swift`, `Volt/Domain/Models/RuntimeProfile.swift`
-- Deterministic scenarios: `Volt/Domain/Models/DemoScenario.swift`, `Volt/Data/Repositories/DefaultDemoScenarioBootstrapService.swift`
-
+> **No license file is currently present in this repo.** Add a `LICENSE` before any external redistribution.
