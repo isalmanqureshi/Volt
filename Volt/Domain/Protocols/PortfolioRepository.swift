@@ -18,4 +18,11 @@ protocol PortfolioRepository {
 
     @discardableResult
     func applyFilledOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> TradeExecutionResult
+    func replaceState(_ state: PersistedPortfolioState)
+}
+
+extension PortfolioRepository {
+    func replaceState(_ state: PersistedPortfolioState) {
+        _ = state
+    }
 }

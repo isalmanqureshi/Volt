@@ -3,6 +3,18 @@ import Foundation
 internal import os
 
 final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
+    private struct PersistedEnvelope: Codable {
+        var version: Int
+        var preferences: AppPreferences
+    }
+
+    private struct LegacyPreferencesV1: Codable {
+        var onboardingCompleted: Bool
+        var aiSummariesEnabled: Bool
+        var selectedEnvironment: TradingEnvironment
+        var simulatorRisk: SimulatorRiskPreferences
+        var activeRuntimeProfileID: String
+    }
     private let defaults: UserDefaults
     private let key: String
     private let subject: CurrentValueSubject<AppPreferences, Never>
@@ -59,7 +71,7 @@ final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
 
     private func persist(_ value: AppPreferences) {
         do {
-            let data = try JSONEncoder().encode(value)
+            let data = try JSONEncoder().encode(PersistedEnvelope(version: AppPreferences.schemaVersion, preferences: value))
             defaults.set(data, forKey: key)
         } catch {
             AppLogger.app.error("App preferences persistence failed")
@@ -69,14 +81,28 @@ final class UserDefaultsAppPreferencesStore: AppPreferencesProviding {
     private static func load(defaults: UserDefaults, key: String) -> AppPreferences? {
         guard let data = defaults.data(forKey: key) else { return nil }
         do {
-            let decoded = try JSONDecoder().decode(AppPreferences.self, from: data)
-            let profile = RuntimeProfile.resolve(id: decoded.activeRuntimeProfileID)
+            if let envelope = try? JSONDecoder().decode(PersistedEnvelope.self, from: data) {
+                let profile = RuntimeProfile.resolve(id: envelope.preferences.activeRuntimeProfileID)
+                return AppPreferences(
+                    onboardingCompleted: envelope.preferences.onboardingCompleted,
+                    aiSummariesEnabled: envelope.preferences.aiSummariesEnabled,
+                    selectedEnvironment: envelope.preferences.selectedEnvironment,
+                    simulatorRisk: envelope.preferences.simulatorRisk.validated(),
+                    activeRuntimeProfileID: profile.id,
+                    activeDemoScenarioID: envelope.preferences.activeDemoScenarioID
+                )
+            }
+
+            let legacy = try JSONDecoder().decode(LegacyPreferencesV1.self, from: data)
+            AppLogger.migration.info("Migrated app preferences from legacy schema v1")
+            let profile = RuntimeProfile.resolve(id: legacy.activeRuntimeProfileID)
             return AppPreferences(
-                onboardingCompleted: decoded.onboardingCompleted,
-                aiSummariesEnabled: decoded.aiSummariesEnabled,
-                selectedEnvironment: decoded.selectedEnvironment,
-                simulatorRisk: decoded.simulatorRisk.validated(),
-                activeRuntimeProfileID: profile.id
+                onboardingCompleted: legacy.onboardingCompleted,
+                aiSummariesEnabled: legacy.aiSummariesEnabled,
+                selectedEnvironment: legacy.selectedEnvironment,
+                simulatorRisk: legacy.simulatorRisk.validated(),
+                activeRuntimeProfileID: profile.id,
+                activeDemoScenarioID: nil
             )
         } catch {
             AppLogger.app.error("App preferences decode failed. Falling back to defaults")

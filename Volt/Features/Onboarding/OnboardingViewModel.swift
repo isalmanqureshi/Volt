@@ -1,4 +1,6 @@
 import Foundation
+import Combine
+internal import os
 
 @MainActor
 final class OnboardingViewModel: ObservableObject {

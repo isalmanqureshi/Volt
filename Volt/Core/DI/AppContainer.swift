@@ -14,6 +14,7 @@ final class AppContainer: ObservableObject {
     let preferencesStore: AppPreferencesProviding
     let insightService: LocalInsightSummaryService
     let lifecycleCoordinator: AppLifecycleCoordinator
+    let demoScenarioService: DemoScenarioBootstrapping
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -28,7 +29,8 @@ final class AppContainer: ObservableObject {
         checkpointService: AccountSnapshotCheckpointing,
         preferencesStore: AppPreferencesProviding,
         insightService: LocalInsightSummaryService,
-        lifecycleCoordinator: AppLifecycleCoordinator
+        lifecycleCoordinator: AppLifecycleCoordinator,
+        demoScenarioService: DemoScenarioBootstrapping
     ) {
         self.environmentProvider = environmentProvider
         self.configuration = configuration
@@ -41,6 +43,7 @@ final class AppContainer: ObservableObject {
         self.preferencesStore = preferencesStore
         self.insightService = insightService
         self.lifecycleCoordinator = lifecycleCoordinator
+        self.demoScenarioService = demoScenarioService
 
         bindRuntimeProfileChanges()
     }
@@ -103,6 +106,11 @@ final class AppContainer: ObservableObject {
             checkpointService: checkpointService,
             stateStore: UserDefaultsUIStateRestorationStore()
         )
+        let demoScenarioService = DefaultDemoScenarioBootstrapService(
+            portfolioRepository: portfolioRepository,
+            preferencesStore: preferencesStore,
+            marketDataRepository: marketDataRepository
+        )
 
         return AppContainer(
             environmentProvider: environmentProvider,
@@ -115,7 +123,8 @@ final class AppContainer: ObservableObject {
             checkpointService: checkpointService,
             preferencesStore: preferencesStore,
             insightService: insightService,
-            lifecycleCoordinator: lifecycleCoordinator
+            lifecycleCoordinator: lifecycleCoordinator,
+            demoScenarioService: demoScenarioService
         )
     }
 
@@ -199,5 +208,9 @@ final class AppContainer: ObservableObject {
             marketDataRepository: marketDataRepository,
             tradingSimulationService: tradingSimulationService
         )
+    }
+
+    func makeSettingsViewModel() -> SettingsViewModel {
+        SettingsViewModel(preferencesStore: preferencesStore, scenarioBootstrap: demoScenarioService)
     }
 }

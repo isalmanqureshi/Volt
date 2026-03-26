@@ -1,11 +1,14 @@
 import Foundation
 
 struct AppPreferences: Codable, Equatable, Sendable {
+    static let schemaVersion = 2
+
     var onboardingCompleted: Bool
     var aiSummariesEnabled: Bool
     var selectedEnvironment: TradingEnvironment
     var simulatorRisk: SimulatorRiskPreferences
     var activeRuntimeProfileID: String
+    var activeDemoScenarioID: String?
 
     var activeRuntimeProfile: RuntimeProfile {
         RuntimeProfile.resolve(id: activeRuntimeProfileID)
@@ -16,6 +19,7 @@ struct AppPreferences: Codable, Equatable, Sendable {
         aiSummariesEnabled: true,
         selectedEnvironment: RuntimeProfile.balanced.environment,
         simulatorRisk: RuntimeProfile.balanced.simulatorDefaults,
-        activeRuntimeProfileID: RuntimeProfile.balanced.id
+        activeRuntimeProfileID: RuntimeProfile.balanced.id,
+        activeDemoScenarioID: nil
     )
 }

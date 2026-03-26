@@ -46,7 +46,7 @@ struct RootTabView: View {
             }
 
             NavigationStack {
-                SettingsView(viewModel: SettingsViewModel(preferencesStore: container.preferencesStore))
+                SettingsView(viewModel: container.makeSettingsViewModel())
             }
             .tag(AppLifecycleCoordinator.Tab.settings)
             .tabItem {
@@ -64,7 +64,7 @@ struct RootTabView: View {
             container.lifecycleCoordinator.persistTab(newValue)
         }
         .overlay(alignment: .topTrailing) {
-            Text(container.preferencesStore.currentPreferences.activeRuntimeProfile.name)
+            Text("Volt RC • \(container.preferencesStore.currentPreferences.activeRuntimeProfile.name)")
                 .font(.caption2.weight(.semibold))
                 .padding(6)
                 .background(.thinMaterial, in: Capsule())

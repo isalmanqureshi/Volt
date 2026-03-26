@@ -16,6 +16,7 @@ final class WatchlistViewModel: ObservableObject {
     @Published private(set) var rows: [RowState] = []
     @Published private(set) var connectionState: StreamConnectionState = .idle
     @Published private(set) var seedingState: MarketSeedingState = .idle
+    @Published private(set) var dataMode: MarketDataMode = .liveSeeded
     @Published private(set) var isRefreshing = false
 
     private let marketDataRepository: MarketDataRepository
@@ -71,5 +72,9 @@ final class WatchlistViewModel: ObservableObject {
         marketDataRepository.seedingStatePublisher
             .receive(on: RunLoop.main)
             .assign(to: &$seedingState)
+
+        marketDataRepository.dataModePublisher
+            .receive(on: RunLoop.main)
+            .assign(to: &$dataMode)
     }
 }

@@ -1,15 +1,20 @@
 import Combine
 import Foundation
+internal import os
 
 @MainActor
 final class SettingsViewModel: ObservableObject {
     @Published private(set) var preferences: AppPreferences
     let runtimeProfiles = RuntimeProfile.all
+    let scenarios: [DemoScenario]
 
     private let preferencesStore: AppPreferencesProviding
+    private let scenarioBootstrap: DemoScenarioBootstrapping?
 
-    init(preferencesStore: AppPreferencesProviding) {
+    init(preferencesStore: AppPreferencesProviding, scenarioBootstrap: DemoScenarioBootstrapping? = nil) {
         self.preferencesStore = preferencesStore
+        self.scenarioBootstrap = scenarioBootstrap
+        self.scenarios = scenarioBootstrap?.scenarios ?? []
         self.preferences = preferencesStore.currentPreferences
 
         preferencesStore.preferencesPublisher
@@ -62,5 +67,13 @@ final class SettingsViewModel: ObservableObject {
 
     func resetOnboarding() {
         preferencesStore.resetOnboarding()
+    }
+
+    func setScenario(_ id: String) {
+        guard id.isEmpty == false else {
+            scenarioBootstrap?.resetScenario()
+            return
+        }
+        scenarioBootstrap?.applyScenario(id: id)
     }
 }

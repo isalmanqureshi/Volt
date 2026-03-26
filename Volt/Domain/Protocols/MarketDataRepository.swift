@@ -6,6 +6,7 @@ protocol MarketDataRepository {
     var tickPublisher: AnyPublisher<MarketTick, Never> { get }
     var connectionStatePublisher: AnyPublisher<StreamConnectionState, Never> { get }
     var seedingStatePublisher: AnyPublisher<MarketSeedingState, Never> { get }
+    var dataModePublisher: AnyPublisher<MarketDataMode, Never> { get }
 
     func start() async
     func handleForegroundResume(at date: Date) async
@@ -15,6 +16,23 @@ protocol MarketDataRepository {
     func quotePublisher(for symbol: String) -> AnyPublisher<Quote?, Never>
     func watchlistQuotes(for symbols: [String]) -> AnyPublisher<[Quote], Never>
     func fetchRecentCandles(symbol: String, outputSize: Int) async throws -> [Candle]
+}
+
+enum MarketDataMode: Equatable, Sendable {
+    case liveSeeded
+    case offlineCached
+    case offlineDeterministic
+
+    var bannerText: String {
+        switch self {
+        case .liveSeeded:
+            return "Live-seeded simulation"
+        case .offlineCached:
+            return "Offline: cached market data"
+        case .offlineDeterministic:
+            return "Offline: deterministic demo market"
+        }
+    }
 }
 
 enum MarketDataRefreshError: LocalizedError {
@@ -32,6 +50,10 @@ enum MarketDataRefreshError: LocalizedError {
 }
 
 extension MarketDataRepository {
+    var dataModePublisher: AnyPublisher<MarketDataMode, Never> {
+        Just(.liveSeeded).eraseToAnyPublisher()
+    }
+
     func handleForegroundResume(at date: Date) async {
         _ = date
     }

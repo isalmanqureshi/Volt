@@ -41,6 +41,10 @@ struct WatchlistView: View {
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 4) {
+                Text(viewModel.dataMode.bannerText)
+                    .font(.caption)
+                    .foregroundStyle(viewModel.dataMode == .liveSeeded ? AnyShapeStyle(.orange.tertiary) : AnyShapeStyle(.secondary))
+                    .accessibilityIdentifier("watchlist_data_mode")
                 Text("State: \(String(describing: viewModel.connectionState))")
                     .font(.caption)
                     .foregroundStyle(.secondary)

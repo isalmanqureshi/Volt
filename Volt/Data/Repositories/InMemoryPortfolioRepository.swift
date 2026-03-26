@@ -98,6 +98,22 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
         }
     }
 
+    func replaceState(_ state: PersistedPortfolioState) {
+        cashBalance = state.cashBalance
+        positionsSubject.send(state.openPositions)
+        orderHistorySubject.send(state.orderHistory)
+        activityTimelineSubject.send(state.activityTimeline)
+        realizedPnLSubject.send(state.realizedPnLHistory)
+        recalculate(using: Array(latestQuotesBySymbol.values))
+
+        do {
+            try persistenceStore?.saveState(state)
+            AppLogger.portfolio.info("Portfolio state replaced for deterministic scenario")
+        } catch {
+            AppLogger.portfolio.error("Failed to persist deterministic scenario state")
+        }
+    }
+
     private func applyBuyOrder(_ draft: OrderDraft, executionPrice: Decimal, filledAt: Date) throws -> TradeExecutionResult {
         let requiredNotional = executionPrice * draft.quantity
         guard cashBalance >= requiredNotional else {
