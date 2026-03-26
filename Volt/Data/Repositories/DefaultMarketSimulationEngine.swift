@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+internal import os
 
 final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     private let config: PriceSimulationConfig
