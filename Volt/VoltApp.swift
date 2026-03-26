@@ -1,4 +1,5 @@
 import SwiftUI
+internal import os
 
 @main
 struct VoltApp: App {

@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+internal import os
 
 @MainActor
 final class SettingsViewModel: ObservableObject {

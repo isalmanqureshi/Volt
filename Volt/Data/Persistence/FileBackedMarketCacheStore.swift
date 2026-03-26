@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 protocol MarketCacheStore {
     func loadQuotes() -> [Quote]

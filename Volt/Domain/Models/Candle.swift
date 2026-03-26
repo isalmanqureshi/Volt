@@ -1,6 +1,6 @@
 import Foundation
 
-struct Candle: Equatable, Sendable {
+struct Candle: Equatable, Sendable, Codable {
     let symbol: String
     let interval: String
     let open: Decimal

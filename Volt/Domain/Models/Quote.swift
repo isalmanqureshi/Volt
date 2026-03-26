@@ -1,6 +1,6 @@
 import Foundation
 
-struct Quote: Equatable, Sendable {
+struct Quote: Equatable, Sendable, Codable {
     let symbol: String
     let lastPrice: Decimal
     let changePercent: Decimal

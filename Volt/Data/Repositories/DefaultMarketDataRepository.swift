@@ -194,7 +194,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
 
     func watchlistQuotes(for symbols: [String]) -> AnyPublisher<[Quote], Never> {
         let symbolsSet = Set(symbols)
-        quotesPublisher
+        return quotesPublisher
             .map { quotes in quotes.filter { symbolsSet.contains($0.symbol) } }
             .eraseToAnyPublisher()
     }

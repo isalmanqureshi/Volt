@@ -36,7 +36,7 @@ final class AppLifecycleCoordinator {
     func applyRuntimeProfileSwitch(to environment: TradingEnvironment) async {
         AppLogger.app.info("Runtime profile switch orchestration start env=\(environment.rawValue, privacy: .public)")
         await marketDataRepository.manualRefresh()
-        checkpointService.checkpoint(trigger: .manual)
+        checkpointService.checkpoint(trigger: .manualRefresh)
         AppLogger.app.info("Runtime profile switch orchestration end env=\(environment.rawValue, privacy: .public)")
     }
 

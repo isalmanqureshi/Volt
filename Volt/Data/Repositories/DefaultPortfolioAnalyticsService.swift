@@ -136,7 +136,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         let symbols = Set(latestOrders.map(\.symbol)).union(latestActivity.map(\.symbol))
         availableSymbolsSubject.send(symbols.sorted())
         applyFilter()
-        AppLogger.analytics.debug("Analytics recompute duration=\(Date().timeIntervalSince(startedAt), privacy: .public)s orders=\(latestOrders.count, privacy: .public) activity=\(latestActivity.count, privacy: .public)")
+        AppLogger.analytics.debug("Analytics recompute duration=\(Date().timeIntervalSince(startedAt), privacy: .public)s orders=\(self.latestOrders.count, privacy: .public) activity=\(self.latestActivity.count, privacy: .public)")
     }
 
     private func applyFilter() {

@@ -1,4 +1,5 @@
 import Foundation
+internal import os
 
 @MainActor
 final class DefaultDemoScenarioBootstrapService: DemoScenarioBootstrapping {
