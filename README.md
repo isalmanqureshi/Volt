@@ -151,10 +151,6 @@ Candle fetches fall back to cached candles the same way. The app never just sits
 ```bash
 # In Xcode
 ⌘U
-
-# CLI
-xcodebuild test -project Volt.xcodeproj -scheme Volt \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
 ```
 
 **What's covered:**
