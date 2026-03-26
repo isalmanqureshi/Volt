@@ -1,24 +1,9 @@
-//
-//  ContentView.swift
-//  Volt
-//
-//  Created by Salman Qureshi on 3/19/26.
-//
-
 import SwiftUI
 
+@available(*, deprecated, message: "Use RootTabView")
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        RootTabView()
+            .environmentObject(AppContainer.bootstrap())
     }
-}
-
-#Preview {
-    ContentView()
 }
