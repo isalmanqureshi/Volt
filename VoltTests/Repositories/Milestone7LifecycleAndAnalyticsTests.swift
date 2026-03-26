@@ -147,6 +147,10 @@ final class Milestone7LifecycleAndAnalyticsTests: XCTestCase {
         service.checkpoint(trigger: .appLaunch)
         XCTAssertEqual(service.checkpoints.count, 1)
 
+        let persisted = expectation(description: "checkpoint persisted")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { persisted.fulfill() }
+        wait(for: [persisted], timeout: 1.0)
+
         let reloaded = try store.loadCheckpoints()
         XCTAssertEqual(reloaded.count, 1)
         XCTAssertEqual(reloaded[0].trigger, .appLaunch)
@@ -165,6 +169,31 @@ final class Milestone7LifecycleAndAnalyticsTests: XCTestCase {
         XCTAssertEqual(service.currentDailyPerformance.count, 2)
         XCTAssertEqual(service.currentRealizedDistribution.first(where: { $0.outcome == .gain })?.count, 1)
         XCTAssertEqual(service.currentRealizedDistribution.first(where: { $0.outcome == .loss })?.count, 1)
+    }
+
+
+    func testQuoteOnlyUpdatesDoNotTriggerStructuralAnalyticsRecompute() {
+        let now = Date()
+        let market = AnalyticsTestMarketDataRepository(quote: .init(symbol: "BTC/USD", lastPrice: 100, changePercent: 0, timestamp: now, source: "test", isSimulated: true))
+        let repository = InMemoryPortfolioRepository(marketDataRepository: market, cashBalance: 10_000)
+        let analytics = DefaultPortfolioAnalyticsService(repository: repository, nowProvider: { now })
+
+        let idle = expectation(description: "analytics settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { idle.fulfill() }
+        wait(for: [idle], timeout: 1.0)
+
+        let structuralBaseline = analytics.structuralRecomputeCount
+        let summaryBaseline = analytics.summaryOnlyUpdateCount
+
+        market.emit(quotes: [.init(symbol: "BTC/USD", lastPrice: 101, changePercent: 0, timestamp: now.addingTimeInterval(1), source: "test", isSimulated: true)])
+        market.emit(quotes: [.init(symbol: "BTC/USD", lastPrice: 102, changePercent: 0, timestamp: now.addingTimeInterval(2), source: "test", isSimulated: true)])
+
+        let updates = expectation(description: "summary updates propagated")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { updates.fulfill() }
+        wait(for: [updates], timeout: 1.0)
+
+        XCTAssertEqual(analytics.structuralRecomputeCount, structuralBaseline)
+        XCTAssertGreaterThan(analytics.summaryOnlyUpdateCount, summaryBaseline)
     }
 
     func testExportPresetWritesExpectedHeaders() throws {
@@ -256,4 +285,8 @@ private final class AnalyticsTestMarketDataRepository: MarketDataRepository {
         quotesPublisher.map { quotes in quotes.filter { symbols.contains($0.symbol) } }.eraseToAnyPublisher()
     }
     func fetchRecentCandles(symbol: String, outputSize: Int) async throws -> [Candle] { [] }
+
+    func emit(quotes: [Quote]) {
+        quotesSubject.send(quotes)
+    }
 }

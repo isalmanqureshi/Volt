@@ -15,6 +15,7 @@ final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointin
     private var latestOpenPositionCount: Int
     private var cancellables = Set<AnyCancellable>()
     private var lastCheckpointDate: Date?
+    private let persistenceQueue = DispatchQueue(label: "com.volt.checkpoint.persistence", qos: .utility)
 
     init(
         portfolioRepository: PortfolioRepository,
@@ -77,11 +78,14 @@ final class DefaultAccountSnapshotCheckpointService: AccountSnapshotCheckpointin
         }
         lastCheckpointDate = checkpoint.timestamp
 
-        do {
-            try snapshotStore.saveCheckpoints(checkpoints)
-            AppLogger.analytics.info("Checkpoint persisted trigger=\(trigger.rawValue, privacy: .public)")
-        } catch {
-            AppLogger.analytics.error("Checkpoint persistence failed trigger=\(trigger.rawValue, privacy: .public)")
+        let snapshot = checkpoints
+        persistenceQueue.async { [snapshotStore] in
+            do {
+                try snapshotStore.saveCheckpoints(snapshot)
+                AppLogger.analytics.info("Checkpoint persisted trigger=\(trigger.rawValue, privacy: .public)")
+            } catch {
+                AppLogger.analytics.error("Checkpoint persistence failed trigger=\(trigger.rawValue, privacy: .public)")
+            }
         }
     }
 

@@ -7,6 +7,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private let checkpointService: AccountSnapshotCheckpointing?
     private let environmentProvider: EnvironmentProviding?
     private let nowProvider: () -> Date
+    private let computeQueue = DispatchQueue(label: "com.volt.analytics.compute", qos: .utility)
 
     private let summarySubject = CurrentValueSubject<PortfolioAnalyticsSummary, Never>(.empty)
     private let performanceSubject = CurrentValueSubject<[PerformancePoint], Never>([])
@@ -23,7 +24,12 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private var latestSummary: PortfolioSummary = .init(cashBalance: 0, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 0, totalEquity: 0, dayChange: 0)
     private var latestOrdersBySymbol: [String: [OrderRecord]] = [:]
     private var latestActivityBySymbol: [String: [ActivityEvent]] = [:]
+    private var sortedActivityAscending: [ActivityEvent] = []
+    private var basePerformancePoints: [PerformancePoint] = []
     private var cancellables = Set<AnyCancellable>()
+
+    private(set) var structuralRecomputeCount = 0
+    private(set) var summaryOnlyUpdateCount = 0
 
     var summaryPublisher: AnyPublisher<PortfolioAnalyticsSummary, Never> { summarySubject.eraseToAnyPublisher() }
     var performancePublisher: AnyPublisher<[PerformancePoint], Never> { performanceSubject.eraseToAnyPublisher() }
@@ -54,8 +60,11 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
 
     func updateFilter(_ filter: HistoryFilter) {
         AppLogger.analytics.debug("Analytics filter updated to \(filter.timeRange.rawValue, privacy: .public)")
-        filterSubject.send(filter)
-        applyFilter()
+        computeQueue.async { [weak self] in
+            guard let self else { return }
+            self.filterSubject.send(filter)
+            self.applyFilter()
+        }
     }
 
     func positionHistory(symbol: String) -> PositionHistorySummary {
@@ -94,49 +103,63 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
 
     private func bind() {
         repository.orderHistoryPublisher
+            .receive(on: computeQueue)
             .sink { [weak self] orders in
                 self?.latestOrders = orders
-                self?.recompute()
+                self?.recomputeStructural()
             }
             .store(in: &cancellables)
 
         repository.activityTimelinePublisher
+            .receive(on: computeQueue)
             .sink { [weak self] events in
                 self?.latestActivity = events
-                self?.recompute()
+                self?.recomputeStructural()
             }
             .store(in: &cancellables)
 
         repository.realizedPnLPublisher
+            .receive(on: computeQueue)
             .sink { [weak self] realized in
                 self?.latestRealized = realized
-                self?.recompute()
+                self?.recomputeStructural()
             }
             .store(in: &cancellables)
 
         repository.summaryPublisher
+            .receive(on: computeQueue)
             .sink { [weak self] summary in
                 self?.latestSummary = summary
-                self?.recompute()
+                self?.publishSummaryDrivenUpdate()
             }
             .store(in: &cancellables)
     }
 
-    private func recompute() {
+    private func recomputeStructural() {
         let startedAt = Date()
+        structuralRecomputeCount += 1
+
         latestOrdersBySymbol = Dictionary(grouping: latestOrders.sorted(by: { $0.executedAt > $1.executedAt }), by: \.symbol)
         latestActivityBySymbol = Dictionary(grouping: latestActivity.sorted(by: { $0.timestamp > $1.timestamp }), by: \.symbol)
+        sortedActivityAscending = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })
+        basePerformancePoints = makeBasePerformancePoints()
 
-        let summary = makeSummary()
-        summarySubject.send(summary)
-        performanceSubject.send(makePerformancePoints(summary: summary))
         dailyPerformanceSubject.send(makeDailyBuckets())
         realizedDistributionSubject.send(makeDistributionBuckets())
 
         let symbols = Set(latestOrders.map(\.symbol)).union(latestActivity.map(\.symbol))
         availableSymbolsSubject.send(symbols.sorted())
         applyFilter()
-        AppLogger.analytics.debug("Analytics recompute duration=\(Date().timeIntervalSince(startedAt), privacy: .public)s orders=\(self.latestOrders.count, privacy: .public) activity=\(self.latestActivity.count, privacy: .public)")
+        publishSummaryDrivenUpdate()
+
+        AppLogger.analytics.debug("Analytics structural recompute duration=\(Date().timeIntervalSince(startedAt), privacy: .public)s orders=\(self.latestOrders.count, privacy: .public) activity=\(self.latestActivity.count, privacy: .public) count=\(self.structuralRecomputeCount, privacy: .public)")
+    }
+
+    private func publishSummaryDrivenUpdate() {
+        summaryOnlyUpdateCount += 1
+        let summary = makeSummary()
+        summarySubject.send(summary)
+        performanceSubject.send(makePerformancePoints(summary: summary))
     }
 
     private func applyFilter() {
@@ -196,7 +219,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         )
     }
 
-    private func makePerformancePoints(summary: PortfolioAnalyticsSummary) -> [PerformancePoint] {
+    private func makeBasePerformancePoints() -> [PerformancePoint] {
         let filteredCheckpoints: [AccountSnapshotCheckpoint] = {
             guard let checkpointService else { return [] }
             guard let environmentProvider else {
@@ -219,15 +242,15 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         }
 
         if points.isEmpty {
-            let sortedActivity = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })
-            let inferredStartingBalance = summary.startingBalance ?? latestSummary.cashBalance
+            let inferredStartingBalance = latestSummary.totalEquity - latestSummary.realizedPnL - latestSummary.unrealizedPnL
+            let safeStartingBalance = inferredStartingBalance > 0 ? inferredStartingBalance : latestSummary.cashBalance
             var cumulativeRealized = Decimal.zero
-            for event in sortedActivity {
+            for event in sortedActivityAscending {
                 cumulativeRealized += event.realizedPnL ?? 0
                 points.append(
                     PerformancePoint(
                         timestamp: event.timestamp,
-                        equity: inferredStartingBalance + cumulativeRealized,
+                        equity: safeStartingBalance + cumulativeRealized,
                         cashBalance: latestSummary.cashBalance,
                         unrealizedPnL: 0,
                         cumulativeRealizedPnL: cumulativeRealized
@@ -236,6 +259,11 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
             }
         }
 
+        return points.sorted(by: { $0.timestamp < $1.timestamp })
+    }
+
+    private func makePerformancePoints(summary: PortfolioAnalyticsSummary) -> [PerformancePoint] {
+        var points = basePerformancePoints
         points.append(
             PerformancePoint(
                 timestamp: nowProvider(),
@@ -245,7 +273,6 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
                 cumulativeRealizedPnL: latestSummary.realizedPnL
             )
         )
-
         return points.sorted(by: { $0.timestamp < $1.timestamp })
     }
 

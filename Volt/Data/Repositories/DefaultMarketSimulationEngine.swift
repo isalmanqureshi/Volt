@@ -1,12 +1,14 @@
 import Combine
 import Foundation
+internal import os
 
 final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     private let config: PriceSimulationConfig
     private let clock: ClockProviding
     private let volatilityPresetProvider: () -> SimulatorVolatilityPreset
+    private let stateLock = NSLock()
     private var prices: [String: Decimal] = [:]
-    private var timerCancellable: AnyCancellable?
+    private var tickTask: Task<Void, Never>?
 
     private let tickSubject = PassthroughSubject<MarketTick, Never>()
     private let stateSubject = CurrentValueSubject<StreamConnectionState, Never>(.idle)
@@ -24,33 +26,68 @@ final class DefaultMarketSimulationEngine: MarketSimulationEngine {
         self.volatilityPresetProvider = volatilityPresetProvider
     }
 
+    deinit {
+        stop()
+    }
+
     func start(with seedQuotes: [Quote]) {
         reseed(with: seedQuotes)
-        guard timerCancellable == nil else { return }
-        stateSubject.send(.liveSimulated)
 
-        timerCancellable = Timer.publish(every: config.tickIntervalSeconds, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in
-                self?.generateTickBurst()
-            }
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard tickTask == nil else { return }
+
+        stateSubject.send(.liveSimulated)
+        AppLogger.market.info("Simulation engine tick loop started")
+        tickTask = Task(priority: .utility) { [weak self] in
+            await self?.runTickLoop()
+        }
     }
 
     func stop() {
-        timerCancellable?.cancel()
-        timerCancellable = nil
+        stateLock.lock()
+        let task = tickTask
+        tickTask = nil
+        stateLock.unlock()
+
+        task?.cancel()
         stateSubject.send(.idle)
+        AppLogger.market.info("Simulation engine tick loop stopped")
     }
 
     func reseed(with quotes: [Quote]) {
-        quotes.forEach { prices[$0.symbol] = $0.lastPrice }
+        stateLock.lock()
+        prices = Dictionary(uniqueKeysWithValues: quotes.map { ($0.symbol, $0.lastPrice) })
+        stateLock.unlock()
+    }
+
+    private func runTickLoop() async {
+        while Task.isCancelled == false {
+            do {
+                try await Task.sleep(for: .seconds(config.tickIntervalSeconds))
+            } catch {
+                break
+            }
+
+            if Task.isCancelled { break }
+            generateTickBurst()
+        }
     }
 
     private func generateTickBurst() {
-        for (symbol, lastPrice) in prices {
-            let newPrice = simulatePrice(from: lastPrice)
-            prices[symbol] = newPrice
-            tickSubject.send(MarketTick(symbol: symbol, price: newPrice, timestamp: clock.now, isSimulated: true))
+        stateLock.lock()
+        var nextPrices: [String: Decimal] = [:]
+        nextPrices.reserveCapacity(prices.count)
+        let existing = prices
+        for (symbol, lastPrice) in existing {
+            nextPrices[symbol] = simulatePrice(from: lastPrice)
+        }
+        prices = nextPrices
+        stateLock.unlock()
+
+        let now = clock.now
+        for (symbol, price) in nextPrices {
+            tickSubject.send(MarketTick(symbol: symbol, price: price, timestamp: now, isSimulated: true))
         }
     }
 
