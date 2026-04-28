@@ -17,10 +17,8 @@
 ## Preview
 
 <p align="center">
-  <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="900" />
+  <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="490" />
 </p>
-
-> If the GIF does not render, add your screen recording at `docs/media/volt_preview.gif`.
 
 ---
 
