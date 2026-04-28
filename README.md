@@ -17,7 +17,7 @@
 ## Preview
 
 <p align="center">
-  <img src="./docs/media/volt-preview.gif" alt="Volt app demo" width="900" />
+  <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="900" />
 </p>
 
 > If the GIF does not render, add your screen recording at `docs/media/volt-preview.gif`.
@@ -67,10 +67,7 @@ This makes it great for:
   <img src="./docs/media/watchlist.png" alt="Watchlist screen" width="260" />
   <img src="./docs/media/portfolio.png" alt="Portfolio screen" width="260" />
   <img src="./docs/media/analytics.png" alt="Analytics screen" width="260" />
-</p>
-
-<p align="center">
-  <img src="./docs/media/portfolio-2.png" alt="Portfolio detail screen" width="520" />
+  <img src="./docs/media/portfolio-2.png" alt="Portfolio detail screen" width="260" />
 </p>
 
 ---
