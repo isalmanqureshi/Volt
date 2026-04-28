@@ -20,7 +20,7 @@
   <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="900" />
 </p>
 
-> If the GIF does not render, add your screen recording at `docs/media/volt-preview.gif`.
+> If the GIF does not render, add your screen recording at `docs/media/volt_preview.gif`.
 
 ---
 
