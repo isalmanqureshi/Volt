@@ -1,14 +1,34 @@
-# Volt RC — iOS Crypto Trading Simulator
+<div align="center">
+  <img src="Volt/Assets.xcassets/AppIcon.appiconset/Volt_Rev.png" alt="Volt app icon" width="140" />
 
-Volt is a full-featured crypto trading simulator built with SwiftUI. It's designed for architecture demos, product walkthroughs, and engineering exercises — **not** real trading. No broker accounts, no live orders, no financial risk. Just a clean, realistic simulation you can run entirely on-device.
+  # Volt RC — iOS Crypto Trading Simulator
 
-> **Quick disclaimer:** Volt is a demo app. It doesn't execute real trades and isn't financial advice.
+  **A premium-feel, on-device crypto trading simulator for demos, architecture reviews, and engineering workflows.**
+
+  ![Platform](https://img.shields.io/badge/Platform-iOS-0A84FF?style=flat-square)
+  ![Language](https://img.shields.io/badge/Language-Swift-F05138?style=flat-square)
+  ![UI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat-square)
+  ![Charts](https://img.shields.io/badge/Charts-Swift%20Charts-8E8E93?style=flat-square)
+  ![License](https://img.shields.io/badge/License-Apache--2.0-111111?style=flat-square)
+</div>
+
+---
+
+## Preview
+
+<p align="center">
+  <img src="docs/media/volt-preview.gif" alt="Volt app demo" width="320" />
+</p>
+
+> If the GIF does not render, add your screen recording at `docs/media/volt-preview.gif`.
 
 ---
 
 ## What is Volt?
 
-Think of Volt as a complete trading app — watchlist, charts, trade tickets, portfolio, history, analytics — where all the execution happens locally. Market quotes can be seeded from [Twelve Data](https://twelvedata.com) to keep things feeling realistic, but the moment you hit "Buy" or "Sell," everything is handled on-device by a local simulation engine.
+Volt is a full-featured crypto trading simulator built with SwiftUI. It's designed for architecture demos, product walkthroughs, and engineering exercises — **not** real trading. No broker accounts, no live orders, no financial risk. Just a clean, realistic simulation you can run entirely on-device.
+
+> **Quick disclaimer:** Volt is a demo app. It doesn't execute real trades and isn't financial advice.
 
 This makes it great for:
 - iOS engineers getting up to speed on a real SwiftUI codebase
@@ -18,7 +38,7 @@ This makes it great for:
 
 ---
 
-## What you can do in the app
+## Features
 
 - **Watchlist** — Browse live or seeded quotes for your configured symbols, pull-to-refresh, and see a clear banner showing whether you're in live, cached, or offline mode.
 - **Asset detail + charts** — Tap any asset to see a quote header and a 1-minute candlestick chart (Swift Charts). Falls back to cached candles gracefully if the network is unavailable.
@@ -30,11 +50,30 @@ This makes it great for:
 
 ---
 
-## How it's built
+## Tech Stack
 
-Volt follows a feature-oriented SwiftUI architecture with clear domain boundaries.
+- **Language:** Swift
+- **UI:** SwiftUI + Swift Charts
+- **Architecture:** Feature-oriented modular structure with clear domain boundaries
+- **Persistence:** JSON state in Application Support + UserDefaults preferences
+- **Market data source:** Twelve Data (seed only)
+- **Execution model:** Fully local simulation engine (on-device order execution)
 
-```
+---
+
+## Screenshots
+
+> Add screenshots under `docs/media/` and reference them here to showcase additional screens (Portfolio, Analytics, History, Trade Ticket).
+
+---
+
+## Architecture
+
+For a deeper technical walkthrough of runtime/data-flow/concurrency/persistence design, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+### Project structure
+
+```text
 Volt/
   App/           # Root tab, lifecycle, navigation
   Core/          # DI, runtime config, preferences, logging
@@ -43,7 +82,7 @@ Volt/
   Features/      # SwiftUI views + view models, one folder per screen
 ```
 
-**The short version of how data flows:**
+### Data flow (high level)
 
 1. App launches → market data repository seeds quotes from Twelve Data (or mock/cache).
 2. A local simulation engine picks up those seed prices and emits 1-second ticks.
@@ -58,21 +97,16 @@ A few things worth calling out:
 
 ---
 
+## Installation
 
-## Architecture
+### Prerequisites
 
-For a deeper technical walkthrough of runtime/data-flow/concurrency/persistence design, see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
-
----
-
-## Getting started
-
-**Prerequisites:**
 - Xcode with an iOS SDK compatible with this project (configured for iOS 26.2 deployment target)
 - macOS capable of running iOS Simulator
 - (Optional) A Twelve Data API key for live seeding
 
-**Clone and run:**
+### Clone and run
+
 ```bash
 git clone <repo-url>
 cd Volt
@@ -81,7 +115,9 @@ open Volt.xcodeproj
 
 Select the `Volt` scheme, pick a simulator, and hit `⌘R`.
 
-**Environment variables** (set under `Product > Scheme > Edit Scheme > Run > Environment Variables`):
+### Environment variables
+
+Set under `Product > Scheme > Edit Scheme > Run > Environment Variables`:
 
 | Variable | Purpose |
 |---|---|
@@ -153,7 +189,8 @@ Candle fetches fall back to cached candles the same way. The app never just sits
 ⌘U
 ```
 
-**What's covered:**
+### What's covered
+
 - DTO decoding and mapping (Twelve Data)
 - Market repository seeding and fallback behavior
 - Portfolio persistence and migration compatibility
@@ -164,7 +201,8 @@ Candle fetches fall back to cached candles the same way. The app never just sits
 
 UI tests use the `UITEST_RESET` launch argument to clear UserDefaults before each run.
 
-**Key things to protect when contributing:**
+### Key things to protect when contributing
+
 - Quote seeding + fallback mode correctness
 - Trade execution math (cash checks, qty validation, slippage)
 - Shared quote-driven valuation consistency
@@ -183,16 +221,16 @@ The "AI-style" insight cards throughout the app are generated by `LocalInsightSu
 
 ## Troubleshooting
 
-**Watchlist shows fallback mode / seeding failed**
+**Watchlist shows fallback mode / seeding failed**  
 → Set `TWELVE_DATA_API_KEY` in your scheme, or switch to `VOLT_ENV=mock`.
 
-**Symbols not loading**
+**Symbols not loading**  
 → Check that `VOLT_SYMBOLS` uses the right format (`BTC/USD,ETH/USD,...`) and that your Twelve Data plan covers those symbols.
 
-**Stale portfolio state from a previous session**
+**Stale portfolio state from a previous session**  
 → Delete the app from the simulator to clear everything, or disable the active deterministic scenario in Settings.
 
-**Tests failing unexpectedly**
+**Tests failing unexpectedly**  
 → Confirm the simulator destination matches and that `UITEST_RESET` is set in the UI test scheme.
 
 ---
@@ -231,6 +269,12 @@ A few things to keep in mind:
 | Analytics | `Volt/Data/Repositories/DefaultPortfolioAnalyticsService.swift` |
 | Runtime profiles | `Volt/Domain/Models/RuntimeProfile.swift` |
 | Demo scenarios | `Volt/Domain/Models/DemoScenario.swift`, `Volt/Data/Repositories/DefaultDemoScenarioBootstrapService.swift` |
+
+---
+
+## Author
+
+Maintained by the Volt RC contributors.
 
 ---
 
