@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Volt/Assets.xcassets/AppIcon.appiconset/Volt_Rev.png" alt="Volt app icon" width="140" />
+  <img src="./Volt/Assets.xcassets/AppIcon.appiconset/Volt_Rev.png" alt="Volt app icon" width="140" />
 
   # Volt RC — iOS Crypto Trading Simulator
 
@@ -17,10 +17,8 @@
 ## Preview
 
 <p align="center">
-  <img src="docs/media/volt-preview.gif" alt="Volt app demo" width="320" />
+  <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="490" />
 </p>
-
-> If the GIF does not render, add your screen recording at `docs/media/volt-preview.gif`.
 
 ---
 
@@ -63,7 +61,12 @@ This makes it great for:
 
 ## Screenshots
 
-> Add screenshots under `docs/media/` and reference them here to showcase additional screens (Portfolio, Analytics, History, Trade Ticket).
+<p align="center">
+  <img src="./docs/media/watchlist.png" alt="Watchlist screen" width="260" />
+  <img src="./docs/media/portfolio.png" alt="Portfolio screen" width="260" />
+  <img src="./docs/media/analytics.png" alt="Analytics screen" width="260" />
+  <img src="./docs/media/portfolio-2.png" alt="Portfolio detail screen" width="260" />
+</p>
 
 ---
 
