@@ -8,113 +8,46 @@ struct PortfolioView: View {
     @State private var managePosition: Position?
 
     var body: some View {
-        List {
-            Section("Summary") {
-                LabeledContent("Total Equity", value: viewModel.summary.totalEquity.formatted(.currency(code: "USD")))
-                LabeledContent("Unrealized P&L", value: viewModel.summary.unrealizedPnL.formatted(.currency(code: "USD")))
-                LabeledContent("Realized P&L", value: viewModel.summary.realizedPnL.formatted(.currency(code: "USD")))
-                LabeledContent("Cash", value: viewModel.summary.cashBalance.formatted(.currency(code: "USD")))
-                LabeledContent("Position Value", value: viewModel.summary.positionsMarketValue.formatted(.currency(code: "USD")))
+        VStack(spacing: 0) {
+            ScreenHeader("Portfolio") {
+                NavigationLink {
+                    OrdersView(viewModel: container.makeOrdersViewModel())
+                } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(Typography.emphasis)
+                        .foregroundStyle(Color.voltTextSecondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Trade history")
             }
 
-            if viewModel.aiSummariesEnabled {
-                Section("AI-style Insights") {
-                    if viewModel.insightCards.isEmpty {
-                        DSStatusMessage(title: "No insights yet", systemImage: "sparkles")
-                    } else {
-                        ForEach(viewModel.insightCards) { card in
-                            DSCard(title: card.title) {
-                                Text(card.body)
-                                    .font(.subheadline)
-                            }
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
-                            .padding(.vertical, 4)
-                        }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    totalValue
+                        .padding(.horizontal, Spacing.gutter)
+                        .padding(.bottom, Spacing.lg)
+
+                    SectionLabel("Open positions")
+                        .padding(.horizontal, Spacing.gutter)
+                        .padding(.bottom, Spacing.xs)
+
+                    positionsList
+
+                    if viewModel.positions.isEmpty == false {
+                        allocation
+                            .padding(Spacing.gutter)
                     }
-                }
-            }
 
-            Section("Analytics Snapshot") {
-                LabeledContent("Closed Trades", value: String(viewModel.analyticsSummary.totalClosedTrades))
-                LabeledContent("Win Rate", value: percent(viewModel.analyticsSummary.winRate))
-                LabeledContent("Avg Win", value: currency(viewModel.analyticsSummary.averageWin))
-                LabeledContent("Avg Loss", value: currency(viewModel.analyticsSummary.averageLoss))
-                LabeledContent("Net Return", value: percent(viewModel.analyticsSummary.netReturnPercent))
-
-                NavigationLink("Open Full Analytics") {
-                    AnalyticsView(viewModel: container.makeAnalyticsViewModel())
-                }
-            }
-
-            Section("Open Positions") {
-                if viewModel.positions.isEmpty {
-                    Text("No open positions yet")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.positions) { position in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(position.symbol)
-                                    .font(.headline)
-                                Spacer()
-                                Text(position.unrealizedPnL.formatted(.currency(code: "USD")))
-                                    .foregroundStyle(position.unrealizedPnL >= 0 ? .green : .red)
-                            }
-                            HStack {
-                                Text("Qty: \(position.quantity.formatted())")
-                                Spacer()
-                                Text("Avg: \(position.averageEntryPrice.formatted(.number.precision(.fractionLength(2...5))))")
-                                Spacer()
-                                Text("Now: \(position.currentPrice.formatted(.number.precision(.fractionLength(2...5))))")
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                            Button("Manage Position") {
-                                managePosition = position
-                            }
-                            .buttonStyle(.bordered)
-
-                            NavigationLink("View Position History") {
-                                PositionHistoryView(viewModel: container.makePositionHistoryViewModel(symbol: position.symbol))
-                            }
-                            .font(.caption)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-
-            Section("Recent Activity") {
-                if viewModel.recentActivity.isEmpty {
-                    Text("No activity yet")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.recentActivity) { event in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(event.symbol)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(event.kind.rawValue.capitalized)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Text(event.timestamp, style: .time)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    if viewModel.aiSummariesEnabled, viewModel.insightCards.isEmpty == false {
+                        insights
+                            .padding(.horizontal, Spacing.gutter)
+                            .padding(.bottom, Spacing.gutter)
                     }
                 }
             }
         }
-        .navigationTitle("Portfolio")
-        .toolbar {
-            NavigationLink("History") {
-                OrdersView(viewModel: container.makeOrdersViewModel())
-            }
-        }
+        .voltScreen()
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(item: $managePosition) { position in
             NavigationStack {
                 ClosePositionView(viewModel: container.makeClosePositionViewModel(position: position))
@@ -122,14 +55,184 @@ struct PortfolioView: View {
         }
     }
 
-    private func percent(_ value: Decimal?) -> String {
-        guard let value else { return "--" }
-        return "\(value.formatted(.number.precision(.fractionLength(2))))%"
+    // MARK: Hero
+
+    private var totalValue: some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text("Total Value")
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            Text("$" + viewModel.summary.totalEquity.voltPriceString(precision: 2))
+                .font(Typography.heroValue)
+                .foregroundStyle(Color.voltTextPrimary)
+                .contentTransition(.numericText())
+            HStack(spacing: Spacing.sm) {
+                Text(unrealizedText)
+                    .font(Typography.monoBodySecondary)
+                    .foregroundStyle(viewModel.summary.unrealizedPnL >= 0 ? Color.voltAccent : Color.voltDanger)
+                Text("Unrealised P&L")
+                    .font(Typography.secondary)
+                    .foregroundStyle(Color.voltTextTertiary)
+            }
+        }
     }
 
-    private func currency(_ value: Decimal?) -> String {
-        guard let value else { return "--" }
-        return value.formatted(.currency(code: "USD"))
+    private var unrealizedText: String {
+        let pnl = viewModel.summary.unrealizedPnL
+        var text = pnl.voltSignedCurrencyString()
+        let basis = viewModel.summary.totalEquity - pnl
+        if basis > 0 {
+            let percent = (pnl / basis) * 100
+            let sign = percent >= 0 ? "+" : ""
+            text += "  \(sign)\(percent.voltPriceString(precision: 2))%"
+        }
+        return text
+    }
+
+    // MARK: Positions
+
+    @ViewBuilder
+    private var positionsList: some View {
+        if viewModel.positions.isEmpty {
+            Text("No open positions yet")
+                .font(Typography.bodySecondary)
+                .foregroundStyle(Color.voltTextSecondary)
+                .padding(.horizontal, Spacing.gutter)
+                .padding(.vertical, Spacing.lg)
+        } else {
+            LazyVStack(spacing: 0) {
+                ForEach(viewModel.positions) { position in
+                    Button {
+                        managePosition = position
+                    } label: {
+                        positionRow(position)
+                    }
+                    .buttonStyle(.plain)
+                    RowDivider()
+                }
+            }
+        }
+    }
+
+    private func positionRow(_ position: Position) -> some View {
+        let base = baseCurrency(of: position.symbol)
+        return HStack(spacing: Spacing.md) {
+            CoinBadge(baseCurrency: base)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(displayName(of: position.symbol))
+                    .font(Typography.emphasis.weight(.semibold))
+                    .foregroundStyle(Color.voltTextPrimary)
+                Text(base)
+                    .font(Typography.monoSecondary)
+                    .foregroundStyle(Color.voltTextSecondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 2) {
+                Text("\(position.quantity.voltPriceString(precision: 8)) \(base)")
+                    .font(Typography.monoBody.weight(.semibold))
+                    .foregroundStyle(Color.voltTextPrimary)
+                Text("avg $" + position.averageEntryPrice.voltPriceString(precision: 2))
+                    .font(Typography.monoSecondary)
+                    .foregroundStyle(Color.voltTextSecondary)
+            }
+        }
+        .padding(.horizontal, Spacing.gutter)
+        .padding(.vertical, Spacing.md)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(displayName(of: position.symbol)) position, \(position.quantity.voltPriceString(precision: 8)) \(base)")
+    }
+
+    // MARK: Allocation
+
+    private struct AllocationSlice: Identifiable {
+        let id: String
+        let base: String
+        let fraction: Double
+    }
+
+    private var allocationSlices: [AllocationSlice] {
+        let values = viewModel.positions.map { position in
+            (position, (position.quantity * position.currentPrice).chartValue)
+        }
+        let total = values.reduce(0) { $0 + $1.1 }
+        guard total > 0 else { return [] }
+        return values.map { position, value in
+            AllocationSlice(
+                id: position.id.uuidString,
+                base: baseCurrency(of: position.symbol),
+                fraction: value / total
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var allocation: some View {
+        let slices = allocationSlices
+        if slices.isEmpty == false {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                SectionLabel("Allocation")
+                GeometryReader { geo in
+                    HStack(spacing: 2) {
+                        ForEach(slices) { slice in
+                            Rectangle()
+                                .fill(Color.brand(forBaseCurrency: slice.base))
+                                .frame(width: max(2, (geo.size.width - CGFloat(slices.count - 1) * 2) * slice.fraction))
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.tag, style: .continuous))
+                }
+                .frame(height: 12)
+
+                HStack(spacing: Spacing.lg) {
+                    ForEach(slices) { slice in
+                        HStack(spacing: Spacing.xs + 2) {
+                            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                .fill(Color.brand(forBaseCurrency: slice.base))
+                                .frame(width: 8, height: 8)
+                            Text(slice.base)
+                                .font(Typography.secondary)
+                                .foregroundStyle(Color.white.opacity(0.6))
+                            Text("\(Int((slice.fraction * 100).rounded()))%")
+                                .font(Typography.monoSecondary)
+                                .foregroundStyle(Color.voltTextPrimary)
+                        }
+                    }
+                }
+                .padding(.top, Spacing.xs)
+            }
+        }
+    }
+
+    // MARK: Insights
+
+    private var insights: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            SectionLabel("Insights")
+            ForEach(viewModel.insightCards) { card in
+                SectionCard {
+                    VStack(alignment: .leading, spacing: Spacing.xs) {
+                        Text(card.title)
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Color.voltTextPrimary)
+                        Text(card.body)
+                            .font(Typography.secondary)
+                            .foregroundStyle(Color.voltTextSecondary)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Symbol helpers
+
+    private func baseCurrency(of symbol: String) -> String {
+        String(symbol.split(separator: "/").first ?? "")
+    }
+
+    private func displayName(of symbol: String) -> String {
+        container.configuration.enabledAssets.first(where: { $0.symbol == symbol })?.displayName
+            ?? baseCurrency(of: symbol)
     }
 }
 
@@ -154,10 +257,11 @@ private final class PortfolioPreviewRepository: PortfolioRepository {
         activity: []
     )
     static let withPositions = PortfolioPreviewRepository(
-        summary: PortfolioSummary(cashBalance: 32_000, positionsMarketValue: 21_000, unrealizedPnL: 420, realizedPnL: 860, totalEquity: 53_000, dayChange: 0),
+        summary: PortfolioSummary(cashBalance: 7_400, positionsMarketValue: 21_017, unrealizedPnL: 1_204.30, realizedPnL: 860, totalEquity: 28_417.62, dayChange: 0),
         positions: [
-            Position(id: UUID(), symbol: "BTC/USD", quantity: 0.15, averageEntryPrice: 67_000, currentPrice: 68_800, unrealizedPnL: 270, openedAt: .now.addingTimeInterval(-3_600)),
-            Position(id: UUID(), symbol: "ETH/USD", quantity: 2.0, averageEntryPrice: 3_200, currentPrice: 3_275, unrealizedPnL: 150, openedAt: .now.addingTimeInterval(-7_200))
+            Position(id: UUID(), symbol: "BTC/USD", quantity: 0.2048, averageEntryPrice: 59_120, currentPrice: 63_842, unrealizedPnL: 967, openedAt: .now.addingTimeInterval(-3_600)),
+            Position(id: UUID(), symbol: "ETH/USD", quantity: 2.41, averageEntryPrice: 3_180, currentPrice: 3_318, unrealizedPnL: 333, openedAt: .now.addingTimeInterval(-7_200)),
+            Position(id: UUID(), symbol: "SOL/USD", quantity: 18.5, averageEntryPrice: 152, currentPrice: 146.29, unrealizedPnL: -105, openedAt: .now.addingTimeInterval(-9_600))
         ],
         activity: [
             ActivityEvent(id: UUID(), kind: .buy, symbol: "BTC/USD", quantity: 0.15, price: 67_000, timestamp: .now.addingTimeInterval(-2_500), orderID: UUID(), relatedPositionID: UUID(), realizedPnL: nil),

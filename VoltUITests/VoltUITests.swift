@@ -15,6 +15,12 @@ final class VoltUITests: XCTestCase {
         return app
     }
 
+    private func openSettings(_ app: XCUIApplication) {
+        // Settings is a sheet opened from the gear in the Watchlist header.
+        app.buttons["Watchlist"].tap()
+        app.buttons["Settings"].firstMatch.tap()
+    }
+
     @MainActor
     func testOnboardingAndSettingsProfileFlow() throws {
         let app = launchApp()
@@ -22,13 +28,13 @@ final class VoltUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Onboarding"].exists)
         app.buttons["Skip"].tap()
 
-        XCTAssertTrue(app.tabBars.buttons["Watchlist"].waitForExistence(timeout: 2))
-        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["Watchlist"].waitForExistence(timeout: 2))
+        openSettings(app)
 
-        let profilePicker = app.pickers["Profile"]
-        XCTAssertTrue(profilePicker.exists)
+        XCTAssertTrue(app.staticTexts["RUNTIME PROFILE"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Balanced"].exists)
 
-        app.buttons["Restart Onboarding"].tap()
+        app.buttons["Restart onboarding"].tap()
         app.terminate()
 
         let relaunched = XCUIApplication()
@@ -41,33 +47,36 @@ final class VoltUITests: XCTestCase {
         let app = launchApp(largeText: true)
         XCTAssertTrue(app.navigationBars["Onboarding"].exists)
         app.buttons["Skip"].tap()
-        XCTAssertTrue(app.tabBars.buttons["Watchlist"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Watchlist"].waitForExistence(timeout: 2))
     }
 
     @MainActor
-    func testTabsExistAfterProfileChange() throws {
+    func testAllFiveTabsExist() throws {
         let app = launchApp()
 
         if app.navigationBars["Onboarding"].exists { app.buttons["Skip"].tap() }
 
-        app.tabBars.buttons["Settings"].tap()
-        XCTAssertTrue(app.navigationBars["Settings"].exists)
+        for tab in ["Watchlist", "Chart", "Portfolio", "Trade", "Analytics"] {
+            XCTAssertTrue(app.buttons[tab].waitForExistence(timeout: 2), "Missing tab: \(tab)")
+        }
 
-        app.tabBars.buttons["Watchlist"].tap()
-        XCTAssertTrue(app.navigationBars.buttons["Settings"].exists || app.tabBars.buttons["Portfolio"].exists)
+        app.buttons["Portfolio"].tap()
+        XCTAssertTrue(app.staticTexts["Total Value"].waitForExistence(timeout: 2))
+
+        app.buttons["Analytics"].tap()
+        XCTAssertTrue(app.staticTexts["Win Rate"].waitForExistence(timeout: 2))
     }
 
     @MainActor
-    func testDeterministicScenarioSelectionAndOfflineBannerVisible() throws {
+    func testDeterministicScenarioSelection() throws {
         let app = launchApp()
         if app.navigationBars["Onboarding"].exists { app.buttons["Skip"].tap() }
 
-        app.tabBars.buttons["Settings"].tap()
-        XCTAssertTrue(app.pickers["settings_scenario_picker"].waitForExistence(timeout: 2))
-        app.pickers["settings_scenario_picker"].tap()
+        openSettings(app)
+        XCTAssertTrue(app.buttons["settings_scenario_picker"].waitForExistence(timeout: 2))
+        app.buttons["settings_scenario_picker"].tap()
         app.buttons["Analytics Rich"].tap()
 
-        app.tabBars.buttons["Watchlist"].tap()
-        XCTAssertTrue(app.staticTexts["watchlist_data_mode"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["SIMULATION"].waitForExistence(timeout: 2))
     }
 }
