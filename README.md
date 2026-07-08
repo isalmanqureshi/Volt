@@ -1,7 +1,8 @@
-<div align="center">
-  <img src="./Volt/Assets.xcassets/AppIcon.appiconset/Volt_Rev.png" alt="Volt app icon" width="140" />
+<p align="center">
+  <img src="./docs/banner.png" alt="Volt — Open-source SwiftUI crypto trading simulator" width="100%" />
+</p>
 
-  # Volt RC — iOS Crypto Trading Simulator
+<div align="center">
 
   **A premium-feel, on-device crypto trading simulator for demos, architecture reviews, and engineering workflows.**
 
