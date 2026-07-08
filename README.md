@@ -42,9 +42,25 @@ This makes it great for:
 - **Asset detail + charts** — Tap any asset to see a quote header and a 1-minute candlestick chart (Swift Charts). Falls back to cached candles gracefully if the network is unavailable.
 - **Trade ticket** — Submit buy or sell market orders with estimated fill prices (including slippage), risk warnings, and a post-fill recap.
 - **Portfolio** — See your open positions with real-time unrealized P&L, all driven from the same shared quote stream.
-- **History** — Review filled orders and activity, filter by symbol or event type, and export to CSV.
+- **History** — Review filled orders and activity, filter by symbol or event type, and export to CSV. Accessible from the Portfolio toolbar.
 - **Analytics** — Equity curve, daily P&L buckets, win rate, profit factor, and more.
-- **Settings** — Switch between runtime profiles (Conservative / Balanced / Aggressive), adjust slippage and volatility, enable deterministic demo scenarios, and more.
+- **Settings** — Switch between runtime profiles (Conservative / Balanced / Aggressive), adjust slippage and volatility, enable deterministic demo scenarios, and more. Accessible via the gear icon.
+
+### Navigation
+
+A custom 5-tab bar anchors the app: **Watchlist**, **Chart**, **Portfolio**, **Trade**, **Analytics**. Settings opens as a sheet from the gear icon, and History is reached from the Portfolio screen's toolbar.
+
+---
+
+## Design system
+
+Volt ships with a dark-only design system ("Volt Dark") so every screen shares one visual language instead of ad-hoc styling per view:
+
+- **Design tokens** — named colors in the asset catalog (`voltBackground`, `voltSurface`, `voltSurfaceDeep`, `voltAccent`, `voltDanger`, `voltTextPrimary`, plus per-coin brand accents), a spacing/radius grid, and a typography scale (SF Pro for labels, SF Mono for all numeric values).
+- **Shared components** — `CoinRow`, `ChangePill`, `SidePill`, `PrimaryButton`, `SparklineView`, `LiveDot`, `SectionCard`, `FilterPill`, `CoinBadge`, and skeleton-shimmer loading placeholders (no spinners anywhere in the app).
+- **Source of truth** — tokens and components live in `Volt/Features/DesignSystem/`; no screen should reference a raw hex value or a system semantic color directly.
+
+See `Volt/Features/DesignSystem/Colors.swift`, `Spacing.swift`, `Typography.swift`, and `Components.swift` for the full token/component set.
 
 ---
 
@@ -272,6 +288,7 @@ A few things to keep in mind:
 | Analytics | `Volt/Data/Repositories/DefaultPortfolioAnalyticsService.swift` |
 | Runtime profiles | `Volt/Domain/Models/RuntimeProfile.swift` |
 | Demo scenarios | `Volt/Domain/Models/DemoScenario.swift`, `Volt/Data/Repositories/DefaultDemoScenarioBootstrapService.swift` |
+| Design tokens + shared components | `Volt/Features/DesignSystem/` |
 
 ---
 
