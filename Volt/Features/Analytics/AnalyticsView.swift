@@ -226,8 +226,38 @@ struct AnalyticsView: View {
 }
 
 private final class AnalyticsPreviewService: PortfolioAnalyticsService {
-    static let populated: PortfolioAnalyticsService = AnalyticsPreviewService(
-        summary: PortfolioAnalyticsSummary(
+    static let populated: PortfolioAnalyticsService = {
+        // 1. Explicitly type and build the Performance Points array
+        let points: [PerformancePoint] = (0..<32).map { index in
+            let timeOffset = Double(index - 32) * 86_400
+            let calculatedEquity = 50_000 + (index * 90) - ((index % 5) * 160)
+            let calculatedPnL = index * 40
+            
+            return PerformancePoint(
+                timestamp: Date.now.addingTimeInterval(timeOffset),
+                equity: Decimal(calculatedEquity),
+                cashBalance: 40_000,
+                unrealizedPnL: 0,
+                cumulativeRealizedPnL: Decimal(calculatedPnL)
+            )
+        }
+        
+        // 2. Explicitly type and build the Performance Buckets array
+        let buckets: [DailyPerformanceBucket] = (0..<16).map { index in
+            let timeOffset = Double(index - 16) * 86_400
+            let date = Calendar.current.startOfDay(for: Date.now.addingTimeInterval(timeOffset))
+            let calculatedPnL = (index * 37) % 90 - 40
+            let tradeCount = 1 + (index % 3)
+            
+            return DailyPerformanceBucket(
+                day: date,
+                realizedPnL: Decimal(calculatedPnL),
+                tradeCount: tradeCount
+            )
+        }
+        
+        // 3. Define the summary model separately
+        let summary = PortfolioAnalyticsSummary(
             totalRealizedPnL: 450,
             totalUnrealizedPnL: 120,
             averageWin: 180,
@@ -240,24 +270,15 @@ private final class AnalyticsPreviewService: PortfolioAnalyticsService {
             currentEquity: 52_300,
             startingBalance: 50_000,
             netReturnPercent: 4.6
-        ),
-        points: (0..<32).map { index in
-            PerformancePoint(
-                timestamp: .now.addingTimeInterval(Double(index - 32) * 86_400),
-                equity: Decimal(50_000 + index * 90 - (index % 5) * 160),
-                cashBalance: 40_000,
-                unrealizedPnL: 0,
-                cumulativeRealizedPnL: Decimal(index * 40)
-            )
-        },
-        buckets: (0..<16).map { index in
-            DailyPerformanceBucket(
-                day: Calendar.current.startOfDay(for: .now.addingTimeInterval(Double(index - 16) * 86_400)),
-                realizedPnL: Decimal((index * 37) % 90 - 40),
-                tradeCount: 1 + index % 3
-            )
-        }
-    )
+        )
+        
+        // 4. Return the fully typed service object
+        return AnalyticsPreviewService(
+            summary: summary,
+            points: points,
+            buckets: buckets
+        )
+    }()
 
     static let empty: PortfolioAnalyticsService = AnalyticsPreviewService(summary: .empty, points: [], buckets: [])
 
