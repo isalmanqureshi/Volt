@@ -16,6 +16,11 @@ protocol MarketDataRepository {
     func quotePublisher(for symbol: String) -> AnyPublisher<Quote?, Never>
     func watchlistQuotes(for symbols: [String]) -> AnyPublisher<[Quote], Never>
     func fetchRecentCandles(symbol: String, outputSize: Int) async throws -> [Candle]
+    /// Fetch candles at a specific interval (e.g. "1min", "1h", "1day"). A default
+    /// implementation forwards to the interval-less variant, so existing mocks/tests
+    /// that only implement `fetchRecentCandles(symbol:outputSize:)` keep working; only
+    /// repositories that actually support multiple granularities need to override it.
+    func fetchRecentCandles(symbol: String, interval: String, outputSize: Int) async throws -> [Candle]
 }
 
 enum MarketDataMode: Equatable, Sendable {
@@ -52,6 +57,13 @@ enum MarketDataRefreshError: LocalizedError {
 extension MarketDataRepository {
     var dataModePublisher: AnyPublisher<MarketDataMode, Never> {
         Just(.liveSeeded).eraseToAnyPublisher()
+    }
+
+    /// Default: ignore the interval and forward to the interval-less fetch. Concrete
+    /// repositories that support real granularities (e.g. `DefaultMarketDataRepository`)
+    /// override this.
+    func fetchRecentCandles(symbol: String, interval: String, outputSize: Int) async throws -> [Candle] {
+        try await fetchRecentCandles(symbol: symbol, outputSize: outputSize)
     }
 
     func handleForegroundResume(at date: Date) async {

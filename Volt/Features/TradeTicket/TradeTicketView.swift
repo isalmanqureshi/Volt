@@ -243,6 +243,10 @@ struct TradeTicketView: View {
         .onAppear(perform: seedAmountIfNeeded)
         .onChange(of: viewModel.latestPrice) { _, _ in
             seedAmountIfNeeded()
+            // Re-derive quantity from the entered amount whenever the live price
+            // moves, so the estimate and submitted notional track the latest quote
+            // instead of freezing at the price in effect when the user last typed.
+            syncQuantityFromAmount()
         }
         .onChange(of: amountText) { _, _ in
             syncQuantityFromAmount()

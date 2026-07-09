@@ -3,24 +3,9 @@ import Foundation
 import SwiftUI
 
 struct OrdersView: View {
-    private enum SideFilter: String, CaseIterable {
-        case all = "All"
-        case buys = "Buys"
-        case sells = "Sells"
-    }
-
     @EnvironmentObject private var container: AppContainer
     @StateObject var viewModel: OrdersViewModel
     @State private var showShareSheet = false
-    @State private var sideFilter: SideFilter = .all
-
-    private var visibleOrders: [OrderRecord] {
-        switch sideFilter {
-        case .all: return viewModel.orders
-        case .buys: return viewModel.orders.filter { $0.side == .buy }
-        case .sells: return viewModel.orders.filter { $0.side == .sell }
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,9 +43,9 @@ struct OrdersView: View {
     private var filterRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Spacing.sm) {
-                ForEach(SideFilter.allCases, id: \.self) { filter in
-                    FilterPill(title: filter.rawValue, isSelected: sideFilter == filter) {
-                        sideFilter = filter
+                ForEach(OrdersViewModel.SideFilter.allCases, id: \.self) { filter in
+                    FilterPill(title: filter.rawValue, isSelected: viewModel.selectedSide == filter) {
+                        viewModel.selectedSide = filter
                     }
                 }
 
@@ -120,7 +105,7 @@ struct OrdersView: View {
 
     @ViewBuilder
     private var ordersList: some View {
-        if visibleOrders.isEmpty {
+        if viewModel.orders.isEmpty {
             VStack(spacing: Spacing.sm) {
                 Spacer()
                 Image(systemName: "clock.arrow.circlepath")
@@ -138,7 +123,7 @@ struct OrdersView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(visibleOrders) { order in
+                    ForEach(viewModel.orders) { order in
                         NavigationLink {
                             PositionHistoryView(viewModel: container.makePositionHistoryViewModel(symbol: order.symbol))
                         } label: {

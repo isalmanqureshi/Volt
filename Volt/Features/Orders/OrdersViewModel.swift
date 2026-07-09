@@ -8,7 +8,22 @@ final class OrdersViewModel: ObservableObject {
         case activity = "Activity"
     }
 
+    enum SideFilter: String, CaseIterable {
+        case all = "All"
+        case buys = "Buys"
+        case sells = "Sells"
+
+        var orderSide: OrderSide? {
+            switch self {
+            case .all: return nil
+            case .buys: return .buy
+            case .sells: return .sell
+            }
+        }
+    }
+
     @Published var selectedSegment: Segment = .orders
+    @Published var selectedSide: SideFilter = .all { didSet { applyFilter() } }
     @Published var selectedRange: AnalyticsTimeRange = .all {
         didSet {
             applyFilter()
@@ -118,6 +133,7 @@ final class OrdersViewModel: ObservableObject {
         filter.timeRange = selectedRange
         filter.symbol = selectedSymbol
         filter.eventKinds = selectedEventKinds
+        filter.side = selectedSide.orderSide
         analyticsService.updateFilter(filter)
     }
 }

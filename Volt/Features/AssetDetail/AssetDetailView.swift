@@ -3,24 +3,6 @@ import Foundation
 import SwiftUI
 
 struct AssetDetailView: View {
-    /// Display window over the fetched 1-minute candles; labels follow the design's
-    /// zoom levels while the underlying fetch stays untouched.
-    private enum ChartRange: String, CaseIterable {
-        case oneDay = "1D"
-        case oneWeek = "1W"
-        case oneMonth = "1M"
-        case threeMonths = "3M"
-
-        var candleWindow: Int? {
-            switch self {
-            case .oneDay: return 30
-            case .oneWeek: return 60
-            case .oneMonth: return 90
-            case .threeMonths: return nil
-            }
-        }
-    }
-
     @EnvironmentObject private var container: AppContainer
     @StateObject var viewModel: AssetDetailViewModel
     /// When provided (Chart tab), the header becomes a coin switcher and the
@@ -30,13 +12,7 @@ struct AssetDetailView: View {
 
     @State private var tradeSide: OrderSide?
     @State private var managePosition: Position?
-    @State private var selectedRange: ChartRange = .oneDay
     @State private var selectedCandle: Candle?
-
-    private var windowedCandles: [Candle] {
-        guard let window = selectedRange.candleWindow else { return viewModel.candles }
-        return Array(viewModel.candles.suffix(window))
-    }
 
     var body: some View {
         ScrollView {
@@ -195,7 +171,7 @@ struct AssetDetailView: View {
             chartMessage("Unable to load candles", detail: message)
         case .loaded:
             CandlestickChartView(
-                candles: windowedCandles,
+                candles: viewModel.candles,
                 livePrice: viewModel.latestQuote?.lastPrice,
                 selectedCandle: $selectedCandle
             )
@@ -219,11 +195,11 @@ struct AssetDetailView: View {
 
     private var rangePills: some View {
         HStack(spacing: Spacing.sm) {
-            ForEach(ChartRange.allCases, id: \.self) { range in
-                let isActive = selectedRange == range
+            ForEach(AssetDetailViewModel.ChartRange.allCases, id: \.self) { range in
+                let isActive = viewModel.selectedRange == range
                 Button {
-                    selectedRange = range
                     selectedCandle = nil
+                    viewModel.selectRange(range)
                 } label: {
                     Text(range.rawValue)
                         .font(Typography.monoBodySecondary)
@@ -253,7 +229,7 @@ struct AssetDetailView: View {
                     .font(Typography.monoCaption)
                     .foregroundStyle(Color.voltTextTertiary)
                     .padding(.horizontal, Spacing.gutter)
-                VolumeBarsView(candles: windowedCandles)
+                VolumeBarsView(candles: viewModel.candles)
                     .frame(height: 80)
             }
         }

@@ -8,7 +8,22 @@ struct CandlestickChartView: View {
     let livePrice: Decimal?
     @Binding var selectedCandle: Candle?
 
-    private let candleHalfWidthSeconds: TimeInterval = 20
+    /// Half-width of a candle body, derived from the median gap between candles so
+    /// bodies stay proportional at any interval (1-minute through 1-day) instead of
+    /// collapsing to a hairline on wider ranges.
+    private var candleHalfWidthSeconds: TimeInterval {
+        guard candles.count > 1 else { return 20 }
+        let times = candles.map { $0.timestamp.timeIntervalSince1970 }.sorted()
+        var gaps: [TimeInterval] = []
+        gaps.reserveCapacity(times.count - 1)
+        for index in 1..<times.count {
+            let delta = times[index] - times[index - 1]
+            if delta > 0 { gaps.append(delta) }
+        }
+        guard gaps.isEmpty == false else { return 20 }
+        let medianGap = gaps.sorted()[gaps.count / 2]
+        return max(medianGap * 0.3, 1)
+    }
 
     var body: some View {
         Chart {
