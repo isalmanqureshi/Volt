@@ -169,6 +169,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
             latestOrders.filter { order in
                 filter.contains(date: order.executedAt, referenceDate: now)
                     && filter.allowsSymbol(order.symbol)
+                    && filter.allowsSide(order.side)
                     && (filter.eventKinds.isEmpty || filter.allows(kind: order.side == .buy ? .buy : .sell))
             }
         )
@@ -176,6 +177,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
             latestActivity.filter { event in
                 filter.contains(date: event.timestamp, referenceDate: now)
                     && filter.allowsSymbol(event.symbol)
+                    && filter.allowsSide(ofKind: event.kind)
                     && filter.allows(kind: event.kind)
             }
         )

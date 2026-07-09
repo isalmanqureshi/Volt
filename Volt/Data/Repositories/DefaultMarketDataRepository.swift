@@ -200,22 +200,33 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     func fetchRecentCandles(symbol: String, outputSize: Int) async throws -> [Candle] {
+        try await fetchRecentCandles(symbol: symbol, interval: "1min", outputSize: outputSize)
+    }
+
+    func fetchRecentCandles(symbol: String, interval: String, outputSize: Int) async throws -> [Candle] {
         let effectiveOutputSize = outputSize > 0 ? outputSize : defaultCandleOutputSize
-        AppLogger.market.info("Candle fetch started for \(symbol, privacy: .public)")
+        // Cache per (symbol, interval) so switching chart ranges doesn't clobber or
+        // return the wrong-granularity candles on the offline-fallback path.
+        let cacheKey = candleCacheKey(symbol: symbol, interval: interval)
+        AppLogger.market.info("Candle fetch started for \(symbol, privacy: .public) interval=\(interval, privacy: .public)")
         do {
-            let candles = try await historicalDataProvider.fetchRecentCandles(symbol: symbol, interval: "1min", outputSize: effectiveOutputSize)
+            let candles = try await historicalDataProvider.fetchRecentCandles(symbol: symbol, interval: interval, outputSize: effectiveOutputSize)
             let sortedCandles = candles.sorted(by: { $0.timestamp < $1.timestamp })
-            cacheStore.saveCandles(sortedCandles, symbol: symbol)
-            AppLogger.market.info("Candle fetch succeeded for \(symbol, privacy: .public)")
+            cacheStore.saveCandles(sortedCandles, symbol: cacheKey)
+            AppLogger.market.info("Candle fetch succeeded for \(symbol, privacy: .public) interval=\(interval, privacy: .public)")
             return sortedCandles
         } catch {
-            if let cachedCandles = cacheStore.loadCandles(symbol: symbol), cachedCandles.isEmpty == false {
-                AppLogger.market.warning("Candle fetch fallback to cache for \(symbol, privacy: .public)")
+            if let cachedCandles = cacheStore.loadCandles(symbol: cacheKey), cachedCandles.isEmpty == false {
+                AppLogger.market.warning("Candle fetch fallback to cache for \(symbol, privacy: .public) interval=\(interval, privacy: .public)")
                 return cachedCandles
             }
-            AppLogger.market.error("Candle fetch failed for \(symbol, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            AppLogger.market.error("Candle fetch failed for \(symbol, privacy: .public) interval=\(interval, privacy: .public): \(error.localizedDescription, privacy: .public)")
             throw error
         }
+    }
+
+    private func candleCacheKey(symbol: String, interval: String) -> String {
+        "\(symbol)#\(interval)"
     }
 
     private func bindSimulation() {
