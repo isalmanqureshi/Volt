@@ -1,15 +1,16 @@
-<div align="center">
-  <img src="./Volt/Assets.xcassets/AppIcon.appiconset/Volt_Rev.png" alt="Volt app icon" width="140" />
+<p align="center">
+  <img src="./docs/media/volt_preview_poster.png" alt="Volt — Open-source SwiftUI crypto trading simulator" width="100%" />
+</p>
 
-  # Volt RC — iOS Crypto Trading Simulator
+<div align="center">
 
   **A premium-feel, on-device crypto trading simulator for demos, architecture reviews, and engineering workflows.**
 
-  ![Platform](https://img.shields.io/badge/Platform-iOS-0A84FF?style=flat-square)
-  ![Language](https://img.shields.io/badge/Language-Swift-F05138?style=flat-square)
-  ![UI](https://img.shields.io/badge/UI-SwiftUI-0A84FF?style=flat-square)
-  ![Charts](https://img.shields.io/badge/Charts-Swift%20Charts-8E8E93?style=flat-square)
-  ![License](https://img.shields.io/badge/License-Apache--2.0-111111?style=flat-square)
+  ![Platform](https://img.shields.io/badge/Platform-iOS-0E0E10?style=flat-square&logo=apple&logoColor=00D4A8)
+  ![Language](https://img.shields.io/badge/Language-Swift-0E0E10?style=flat-square&logo=swift&logoColor=00D4A8)
+  ![UI](https://img.shields.io/badge/UI-SwiftUI-0E0E10?style=flat-square&logo=swift&logoColor=00D4A8)
+  ![Charts](https://img.shields.io/badge/Charts-Swift%20Charts-0E0E10?style=flat-square&logoColor=00D4A8)
+  ![License](https://img.shields.io/badge/License-Apache--2.0-0E0E10?style=flat-square&logoColor=00D4A8)
 </div>
 
 ---
@@ -17,7 +18,18 @@
 ## Preview
 
 <p align="center">
-  <img src="./docs/media/volt_preview.gif" alt="Volt app demo" width="490" />
+  <video
+    src="https://github.com/user-attachments/assets/f02fcacc-501f-4527-8c39-41caee57e0fc"
+    poster="./docs/media/volt_preview_poster.png"
+    width="490"
+    autoplay
+    loop
+    muted
+    playsinline>
+    <a href="https://github.com/user-attachments/assets/f02fcacc-501f-4527-8c39-41caee57e0fc">
+      <img src="./docs/banner.png" width="490" alt="▶ Watch the Volt walkthrough">
+    </a>
+  </video>
 </p>
 
 ---
@@ -42,9 +54,25 @@ This makes it great for:
 - **Asset detail + charts** — Tap any asset to see a quote header and a 1-minute candlestick chart (Swift Charts). Falls back to cached candles gracefully if the network is unavailable.
 - **Trade ticket** — Submit buy or sell market orders with estimated fill prices (including slippage), risk warnings, and a post-fill recap.
 - **Portfolio** — See your open positions with real-time unrealized P&L, all driven from the same shared quote stream.
-- **History** — Review filled orders and activity, filter by symbol or event type, and export to CSV.
+- **History** — Review filled orders and activity, filter by symbol or event type, and export to CSV. Accessible from the Portfolio toolbar.
 - **Analytics** — Equity curve, daily P&L buckets, win rate, profit factor, and more.
-- **Settings** — Switch between runtime profiles (Conservative / Balanced / Aggressive), adjust slippage and volatility, enable deterministic demo scenarios, and more.
+- **Settings** — Switch between runtime profiles (Conservative / Balanced / Aggressive), adjust slippage and volatility, enable deterministic demo scenarios, and more. Accessible via the gear icon.
+
+### Navigation
+
+A custom 5-tab bar anchors the app: **Watchlist**, **Chart**, **Portfolio**, **Trade**, **Analytics**. Settings opens as a sheet from the gear icon, and History is reached from the Portfolio screen's toolbar.
+
+---
+
+## Design system
+
+Volt ships with a dark-only design system ("Volt Dark") so every screen shares one visual language instead of ad-hoc styling per view:
+
+- **Design tokens** — named colors in the asset catalog (`voltBackground`, `voltSurface`, `voltSurfaceDeep`, `voltAccent`, `voltDanger`, `voltTextPrimary`, plus per-coin brand accents), a spacing/radius grid, and a typography scale (SF Pro for labels, SF Mono for all numeric values).
+- **Shared components** — `CoinRow`, `ChangePill`, `SidePill`, `PrimaryButton`, `SparklineView`, `LiveDot`, `SectionCard`, `FilterPill`, `CoinBadge`, and skeleton-shimmer loading placeholders (no spinners anywhere in the app).
+- **Source of truth** — tokens and components live in `Volt/Features/DesignSystem/`; no screen should reference a raw hex value or a system semantic color directly.
+
+See `Volt/Features/DesignSystem/Colors.swift`, `Spacing.swift`, `Typography.swift`, and `Components.swift` for the full token/component set.
 
 ---
 
@@ -62,10 +90,15 @@ This makes it great for:
 ## Screenshots
 
 <p align="center">
-  <img src="./docs/media/watchlist.png" alt="Watchlist screen" width="260" />
-  <img src="./docs/media/portfolio.png" alt="Portfolio screen" width="260" />
-  <img src="./docs/media/analytics.png" alt="Analytics screen" width="260" />
-  <img src="./docs/media/portfolio-2.png" alt="Portfolio detail screen" width="260" />
+  <img src="./docs/media/watchlist.png" alt="Watchlist screen" width="220" />
+  <img src="./docs/media/trade.png" alt="Trade screen" width="220" />
+  <img src="./docs/media/portfolio.png" alt="Portfolio screen" width="220" />
+  <img src="./docs/media/history.png" alt="History screen" width="220" />
+  <img src="./docs/media/analytics.png" alt="Analytics screen" width="220" />
+</p>
+
+<p align="center">
+  <sub>Updated dark UI across every screen — new inline sparklines on Watchlist, a redesigned Trade ticket with slippage presets and fill receipt, and dedicated History and Analytics views.</sub>
 </p>
 
 ---
@@ -272,6 +305,7 @@ A few things to keep in mind:
 | Analytics | `Volt/Data/Repositories/DefaultPortfolioAnalyticsService.swift` |
 | Runtime profiles | `Volt/Domain/Models/RuntimeProfile.swift` |
 | Demo scenarios | `Volt/Domain/Models/DemoScenario.swift`, `Volt/Data/Repositories/DefaultDemoScenarioBootstrapService.swift` |
+| Design tokens + shared components | `Volt/Features/DesignSystem/` |
 
 ---
 

@@ -18,9 +18,13 @@ final class WatchlistViewModel: ObservableObject {
     @Published private(set) var seedingState: MarketSeedingState = .idle
     @Published private(set) var dataMode: MarketDataMode = .liveSeeded
     @Published private(set) var isRefreshing = false
+    /// Rolling recent-price buffer per symbol, presentation-only (drives row sparklines).
+    @Published private(set) var sparklines: [String: [Double]] = [:]
 
     private let marketDataRepository: MarketDataRepository
     private let assetsBySymbol: [String: Asset]
+    private var cancellables = Set<AnyCancellable>()
+    private let sparklineCapacity = 40
 
     init(marketDataRepository: MarketDataRepository, assets: [Asset]) {
         self.marketDataRepository = marketDataRepository
@@ -64,6 +68,26 @@ final class WatchlistViewModel: ObservableObject {
             }
             .receive(on: RunLoop.main)
             .assign(to: &$rows)
+
+        marketDataRepository.quotesPublisher
+            .receive(on: RunLoop.main)
+            .sink { [weak self] quotes in
+                guard let self else { return }
+                var lines = self.sparklines
+                for quote in quotes {
+                    let value = NSDecimalNumber(decimal: quote.lastPrice).doubleValue
+                    var buffer = lines[quote.symbol] ?? []
+                    if buffer.last != value {
+                        buffer.append(value)
+                    }
+                    if buffer.count > self.sparklineCapacity {
+                        buffer.removeFirst(buffer.count - self.sparklineCapacity)
+                    }
+                    lines[quote.symbol] = buffer
+                }
+                self.sparklines = lines
+            }
+            .store(in: &cancellables)
 
         marketDataRepository.connectionStatePublisher
             .receive(on: RunLoop.main)

@@ -5,24 +5,53 @@ import SwiftUI
 struct AssetDetailView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject var viewModel: AssetDetailViewModel
+    /// When provided (Chart tab), the header becomes a coin switcher and the
+    /// navigation bar is hidden; pushed from Watchlist it keeps the back button.
+    var availableAssets: [Asset] = []
+    var onSelectAsset: ((Asset) -> Void)? = nil
+
     @State private var tradeSide: OrderSide?
     @State private var managePosition: Position?
+    @State private var selectedCandle: Candle?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
                 header
-                chartCard
-                summaryCard
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, Spacing.md)
+
+                ohlcRow
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, Spacing.sm)
+
+                chartSection
+                    .padding(.top, Spacing.sm)
+
+                rangePills
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, Spacing.sm)
+
+                volumeSection
+                    .padding(.top, Spacing.sm)
+
                 if let position = viewModel.openPosition {
                     positionCard(position)
+                        .padding(.horizontal, Spacing.gutter)
+                        .padding(.top, Spacing.lg)
                 }
+
                 tradeActions
+                    .padding(.horizontal, Spacing.gutter)
+                    .padding(.top, Spacing.lg)
+                    .padding(.bottom, Spacing.gutter)
             }
-            .padding()
         }
+        .voltScreen()
         .navigationTitle(viewModel.asset.symbol)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Color.voltBackground, for: .navigationBar)
+        .toolbar(onSelectAsset == nil ? .automatic : .hidden, for: .navigationBar)
         .task {
             viewModel.onAppear()
         }
@@ -30,9 +59,10 @@ struct AssetDetailView: View {
             viewModel.onDisappear()
         }
         .sheet(item: $tradeSide) { side in
-            NavigationStack {
-                TradeTicketView(viewModel: container.makeTradeTicketViewModel(asset: viewModel.asset, side: side))
-            }
+            TradeTicketView(
+                viewModel: container.makeTradeTicketViewModel(asset: viewModel.asset, side: side),
+                dismissesOnSuccess: true
+            )
         }
         .sheet(item: $managePosition) { position in
             NavigationStack {
@@ -41,128 +71,225 @@ struct AssetDetailView: View {
         }
     }
 
+    // MARK: Header
+
     private var header: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(viewModel.asset.displayName)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
-            HStack(alignment: .lastTextBaseline) {
-                Text(viewModel.currentPriceText)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                Text(viewModel.asset.quoteCurrency)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 8) {
-                Text(viewModel.changeText)
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(viewModel.isPriceUp ? .green : .red)
-
-                Label(viewModel.liveStatusText, systemImage: "waveform.path.ecg")
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.orange.opacity(0.15), in: Capsule())
-                    .foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: Spacing.xs + 2) {
+            coinTitle
+            HStack(alignment: .firstTextBaseline, spacing: Spacing.sm + 2) {
+                Text("$" + viewModel.currentPriceText)
+                    .font(Typography.heroValue)
+                    .foregroundStyle(Color.voltTextPrimary)
+                    .contentTransition(.numericText())
+                if viewModel.latestQuote != nil {
+                    ChangePill(
+                        text: viewModel.isPriceUp ? "+" + viewModel.changeText : viewModel.changeText,
+                        isPositive: viewModel.isPriceUp
+                    )
+                }
             }
         }
     }
 
     @ViewBuilder
-    private var chartCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("1m Candles")
-                .font(.headline)
+    private var coinTitle: some View {
+        let row = HStack(spacing: Spacing.sm + 2) {
+            CoinBadge(baseCurrency: viewModel.asset.baseCurrency, size: 28)
+            Text(viewModel.asset.displayName)
+                .font(Typography.emphasis.weight(.semibold))
+                .foregroundStyle(Color.voltTextPrimary)
+            Text(viewModel.asset.baseCurrency)
+                .font(Typography.monoBodySecondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            if onSelectAsset != nil {
+                Image(systemName: "chevron.down")
+                    .font(Typography.caption)
+                    .foregroundStyle(Color.voltTextTertiary)
+            }
+        }
 
-            switch viewModel.chartState {
-            case .idle, .loading:
-                ProgressView("Loading candles…")
-                    .frame(maxWidth: .infinity, minHeight: 220)
-            case .empty:
-                ContentUnavailableView("No Candle Data", systemImage: "chart.xyaxis.line")
-                    .frame(maxWidth: .infinity, minHeight: 220)
-            case .failed(let message):
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Unable to load candles")
-                        .font(.subheadline.weight(.semibold))
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if let quote = viewModel.latestQuote {
-                        Text("Live quote still available: \(quote.lastPrice.formatted(.number.precision(.fractionLength(2...6))))")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
+        if let onSelectAsset, availableAssets.isEmpty == false {
+            Menu {
+                ForEach(availableAssets) { asset in
+                    Button("\(asset.displayName) (\(asset.baseCurrency))") {
+                        onSelectAsset(asset)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 220)
-            case .loaded:
-                CandlestickChartView(candles: viewModel.candles, livePrice: viewModel.latestQuote?.lastPrice)
-                    .frame(height: 260)
+            } label: {
+                row
+            }
+            .buttonStyle(.plain)
+        } else {
+            row
+        }
+    }
+
+    // MARK: OHLC crosshair readout
+
+    @ViewBuilder
+    private var ohlcRow: some View {
+        if let candle = selectedCandle {
+            HStack(spacing: Spacing.md + 2) {
+                ohlcField("O", candle.open, color: .voltTextPrimary)
+                ohlcField("H", candle.high, color: .voltAccent)
+                ohlcField("L", candle.low, color: .voltDanger)
+                ohlcField("C", candle.close, color: .voltTextPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.sm)
+            .voltSurfaceStyle(cornerRadius: Radius.button)
+        } else {
+            Text("Hold the chart for OHLC")
+                .font(Typography.monoCaption)
+                .foregroundStyle(Color.voltTextTertiary)
+                .padding(.vertical, Spacing.sm)
+        }
+    }
+
+    private func ohlcField(_ label: String, _ value: Decimal, color: Color) -> some View {
+        HStack(spacing: Spacing.xs) {
+            Text(label)
+                .foregroundStyle(Color.voltTextTertiary)
+            Text(value.voltPriceString(precision: viewModel.asset.pricePrecision))
+                .foregroundStyle(color)
+        }
+        .font(Typography.monoCaption)
+    }
+
+    // MARK: Chart
+
+    @ViewBuilder
+    private var chartSection: some View {
+        switch viewModel.chartState {
+        case .idle, .loading:
+            SkeletonView(cornerRadius: 0)
+                .frame(height: 300)
+        case .empty:
+            chartMessage("No candle data", detail: "Nothing to draw for \(viewModel.asset.symbol) yet.")
+        case .failed(let message):
+            chartMessage("Unable to load candles", detail: message)
+        case .loaded:
+            CandlestickChartView(
+                candles: viewModel.candles,
+                livePrice: viewModel.latestQuote?.lastPrice,
+                selectedCandle: $selectedCandle
+            )
+            .frame(height: 300)
+        }
+    }
+
+    private func chartMessage(_ title: String, detail: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text(title)
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Color.voltTextPrimary)
+            Text(detail)
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 300, alignment: .leading)
+        .padding(.horizontal, Spacing.gutter)
+        .background(Color.voltSurfaceDeep)
+    }
+
+    private var rangePills: some View {
+        HStack(spacing: Spacing.sm) {
+            ForEach(AssetDetailViewModel.ChartRange.allCases, id: \.self) { range in
+                let isActive = viewModel.selectedRange == range
+                Button {
+                    selectedCandle = nil
+                    viewModel.selectRange(range)
+                } label: {
+                    Text(range.rawValue)
+                        .font(Typography.monoBodySecondary)
+                        .foregroundStyle(isActive ? Color.voltAccent : Color.white.opacity(0.5))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Spacing.sm)
+                        .background(
+                            isActive ? Color.voltAccent.opacity(0.1) : .clear,
+                            in: RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                        )
+                        .overlay(alignment: .bottom) {
+                            Rectangle()
+                                .fill(isActive ? Color.voltAccent : .clear)
+                                .frame(height: 2)
+                        }
+                }
+                .buttonStyle(.plain)
             }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var summaryCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Summary")
-                .font(.headline)
-
-            summaryRow(title: "Last Price", value: viewModel.currentPriceText)
-            summaryRow(title: "Change", value: viewModel.changeText)
-            summaryRow(title: "Updated", value: viewModel.lastUpdatedText)
-            summaryRow(title: "Bars", value: "\(viewModel.candles.count)")
+    @ViewBuilder
+    private var volumeSection: some View {
+        if case .loaded = viewModel.chartState {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                Text("Volume")
+                    .font(Typography.monoCaption)
+                    .foregroundStyle(Color.voltTextTertiary)
+                    .padding(.horizontal, Spacing.gutter)
+                VolumeBarsView(candles: viewModel.candles)
+                    .frame(height: 80)
+            }
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
+
+    // MARK: Position + trade actions
 
     private func positionCard(_ position: Position) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Your Position")
-                .font(.headline)
-            summaryRow(title: "Open Quantity", value: position.quantity.formatted())
-            summaryRow(title: "Avg Entry", value: position.averageEntryPrice.formatted(.currency(code: "USD")))
-            summaryRow(title: "Unrealized P&L", value: position.unrealizedPnL.formatted(.currency(code: "USD")))
-
-            Button("Sell / Manage Position") {
-                managePosition = position
+        SectionCard {
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                SectionLabel("Your position")
+                positionRow("Open quantity", position.quantity.voltPriceString(precision: 8))
+                positionRow("Avg entry", "$" + position.averageEntryPrice.voltPriceString(precision: viewModel.asset.pricePrecision))
+                HStack {
+                    Text("Unrealised P&L")
+                        .font(Typography.bodySecondary)
+                        .foregroundStyle(Color.voltTextSecondary)
+                    Spacer()
+                    Text(position.unrealizedPnL.voltSignedCurrencyString())
+                        .font(Typography.monoBody)
+                        .foregroundStyle(position.unrealizedPnL >= 0 ? Color.voltAccent : Color.voltDanger)
+                }
+                Button {
+                    managePosition = position
+                } label: {
+                    Text("Manage position")
+                        .font(Typography.bodySecondary)
+                        .foregroundStyle(Color.white.opacity(0.75))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Spacing.sm)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Radius.button, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+                        )
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.bordered)
         }
-        .padding()
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func positionRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(Typography.bodySecondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            Spacer()
+            Text(value)
+                .font(Typography.monoBody)
+                .foregroundStyle(Color.voltTextPrimary)
+        }
     }
 
     private var tradeActions: some View {
-        HStack(spacing: 12) {
-            Button("Buy") {
+        HStack(spacing: Spacing.md) {
+            PrimaryButton(title: "Buy \(viewModel.asset.baseCurrency)") {
                 tradeSide = .buy
             }
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity)
-
-            if viewModel.openPosition == nil {
-                Button("Sell") {
-                    tradeSide = .sell
-                }
-                .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
+            PrimaryButton(title: "Sell \(viewModel.asset.baseCurrency)", style: .danger) {
+                tradeSide = .sell
             }
-        }
-    }
-
-    private func summaryRow(title: String, value: String) -> some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.body.monospacedDigit())
         }
     }
 }
@@ -257,18 +384,18 @@ private final class AssetDetailPreviewRepository: MarketDataRepository {
     init(failCandles: Bool = false) {
         self.failCandles = failCandles
         let now = Date()
-        self.previewCandles = (0..<60).map { index in
-            let base = Decimal(68_000 + index)
-            let close = index.isMultiple(of: 2) ? (base + 8) : (base - 6)
+        self.previewCandles = (0..<90).map { index in
+            let base = Decimal(68_000 + index * 9)
+            let close = index.isMultiple(of: 2) ? (base + 42) : (base - 33)
             return Candle(
                 symbol: "BTC/USD",
                 interval: "1min",
                 open: base,
-                high: max(base, close) + 10,
-                low: min(base, close) - 9,
+                high: max(base, close) + 30,
+                low: min(base, close) - 27,
                 close: close,
-                volume: 1_000,
-                timestamp: now.addingTimeInterval(TimeInterval(-60 * (60 - index))),
+                volume: Decimal(300 + (index * 53) % 800),
+                timestamp: now.addingTimeInterval(TimeInterval(-60 * (90 - index))),
                 isComplete: true
             )
         }

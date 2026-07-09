@@ -25,6 +25,8 @@ final class TradeTicketViewModel: ObservableObject {
     @Published private(set) var availableCash: Decimal = 0
     @Published private(set) var riskWarning: String?
     @Published private(set) var tradeRecap: TradeRecap?
+    @Published private(set) var lastFill: TradeExecutionResult?
+    @Published private(set) var slippagePreset: SlippagePreset
 
     private let marketDataRepository: MarketDataRepository
     private let portfolioRepository: PortfolioRepository
@@ -50,6 +52,7 @@ final class TradeTicketViewModel: ObservableObject {
         self.tradingSimulationService = tradingSimulationService
         self.preferencesStore = preferencesStore
         self.tradeInsightService = tradeInsightService
+        self.slippagePreset = preferencesStore.currentPreferences.simulatorRisk.slippagePreset
         bind()
         applyRiskDefaults()
         logger.info("Trade ticket opened for \(asset.symbol, privacy: .public)")
@@ -81,6 +84,7 @@ final class TradeTicketViewModel: ObservableObject {
         do {
             let result = try tradingSimulationService.placeOrder(draft)
             tradeRecap = tradeInsightService.makeRecap(result: result, latestSummary: portfolioRepository.currentSummary)
+            lastFill = result
             didSubmitSuccessfully = true
         } catch {
             logger.error("Trade ticket submission failed: \(error.localizedDescription, privacy: .public)")
@@ -88,6 +92,12 @@ final class TradeTicketViewModel: ObservableObject {
         }
 
         isSubmitting = false
+    }
+
+    /// Routes through the same preferences path Settings uses; simulation reads the
+    /// preset from preferences at execution time.
+    func setSlippage(_ preset: SlippagePreset) {
+        preferencesStore.update { $0.simulatorRisk.slippagePreset = preset }
     }
 
     private func bind() {
@@ -110,6 +120,15 @@ final class TradeTicketViewModel: ObservableObject {
         Publishers.CombineLatest($quantityText, $side)
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _ in
+                self?.revalidate()
+            }
+            .store(in: &cancellables)
+
+        preferencesStore.preferencesPublisher
+            .map(\.simulatorRisk.slippagePreset)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] preset in
+                self?.slippagePreset = preset
                 self?.revalidate()
             }
             .store(in: &cancellables)
@@ -178,130 +197,352 @@ final class TradeTicketViewModel: ObservableObject {
 struct TradeTicketView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject var viewModel: TradeTicketViewModel
+    /// True when presented as a sheet (Asset Detail flow); the tab keeps the
+    /// screen up so the "Last fill" recap stays visible.
+    var dismissesOnSuccess = false
+    /// When provided, the coin header becomes a switcher menu (tab usage).
+    var availableAssets: [Asset] = []
+    var onSelectAsset: ((Asset) -> Void)? = nil
+
+    @State private var amountText = ""
+    @State private var didSeedAmount = false
 
     var body: some View {
-        Form {
-            Section("Asset") {
-                LabeledContent("Symbol", value: viewModel.asset.symbol)
-                LabeledContent("Name", value: viewModel.asset.displayName)
-                LabeledContent("Latest Price", value: viewModel.latestPrice?.formatted(.currency(code: "USD")) ?? "--")
-            }
+        VStack(spacing: 0) {
+            ScreenHeader("Trade")
+            coinHeader
+                .padding(.horizontal, Spacing.gutter)
+                .padding(.bottom, Spacing.sm)
 
-            Section("Order") {
-                Picker("Side", selection: $viewModel.side) {
-                    Text("Buy").tag(OrderSide.buy)
-                    Text("Sell").tag(OrderSide.sell)
-                }
-                .pickerStyle(.segmented)
-
-                TextField("Quantity", text: $viewModel.quantityText)
-                    .keyboardType(.decimalPad)
-
-                LabeledContent("Estimated Fill", value: viewModel.estimatedExecutionPrice.formatted(.currency(code: "USD")))
-                LabeledContent("Estimated Value", value: viewModel.estimatedCost.formatted(.currency(code: "USD")))
-                Text(viewModel.runtimeContextLabel)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                LabeledContent("Available Cash", value: viewModel.availableCash.formatted(.currency(code: "USD")))
-            }
-
-            if case .invalid(let message) = viewModel.validationState {
-                Section {
-                    Text(message)
-                        .foregroundStyle(.orange)
-                }
-            }
-            if let riskWarning = viewModel.riskWarning {
-                Section("Risk Warning") {
-                    Text(riskWarning)
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            if let submissionError = viewModel.submissionError {
-                Section {
-                    Text(submissionError)
-                        .foregroundStyle(.red)
-                }
-            }
-            if let recap = viewModel.tradeRecap {
-                Section(recap.title) {
-                    Text(recap.body)
-                        .font(.subheadline)
-                }
-            }
-
-            Section {
-                Button {
-                    viewModel.submitOrder()
-                } label: {
-                    if viewModel.isSubmitting {
-                        ProgressView()
-                    } else {
-                        Text(viewModel.side == .buy ? "Place Buy Order" : "Place Sell Order")
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.gutter) {
+                    sideToggle
+                    amountCard
+                    slippageSection
+                    balanceRow
+                    messages
+                    PrimaryButton(
+                        title: "\(viewModel.side == .buy ? "Buy" : "Sell") \(viewModel.asset.baseCurrency)",
+                        style: viewModel.side == .buy ? .accent : .danger,
+                        isEnabled: viewModel.canSubmit && viewModel.isSubmitting == false
+                    ) {
+                        viewModel.submitOrder()
+                    }
+                    if let fill = viewModel.lastFill {
+                        recapCard(fill)
                     }
                 }
-                .disabled(!viewModel.canSubmit || viewModel.isSubmitting)
+                .padding(.horizontal, Spacing.gutter)
+                .padding(.top, Spacing.lg)
+                .padding(.bottom, Spacing.gutter)
             }
+            .scrollDismissesKeyboard(.interactively)
         }
-        .navigationTitle("Trade Ticket")
-        .navigationBarTitleDisplayMode(.inline)
+        .voltScreen()
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear(perform: seedAmountIfNeeded)
+        .onChange(of: viewModel.latestPrice) { _, _ in
+            seedAmountIfNeeded()
+            // Re-derive quantity from the entered amount whenever the live price
+            // moves, so the estimate and submitted notional track the latest quote
+            // instead of freezing at the price in effect when the user last typed.
+            syncQuantityFromAmount()
+        }
+        .onChange(of: amountText) { _, _ in
+            syncQuantityFromAmount()
+        }
         .onChange(of: viewModel.didSubmitSuccessfully) { _, isSuccess in
-            if isSuccess {
+            if isSuccess, dismissesOnSuccess {
                 dismiss()
             }
         }
     }
+
+    // MARK: Header
+
+    @ViewBuilder
+    private var coinHeader: some View {
+        let row = HStack(spacing: Spacing.sm + 2) {
+            CoinBadge(baseCurrency: viewModel.asset.baseCurrency, size: 24)
+            Text(viewModel.asset.displayName)
+                .font(Typography.body.weight(.semibold))
+                .foregroundStyle(Color.voltTextPrimary)
+            Text(viewModel.asset.baseCurrency)
+                .font(Typography.monoSecondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            if onSelectAsset != nil {
+                Image(systemName: "chevron.down")
+                    .font(Typography.caption)
+                    .foregroundStyle(Color.voltTextTertiary)
+            }
+            Spacer()
+            Text(viewModel.latestPrice.map { "$" + $0.voltPriceString(precision: viewModel.asset.pricePrecision) } ?? "—")
+                .font(Typography.monoBody.weight(.semibold))
+                .foregroundStyle(Color.voltTextPrimary)
+        }
+
+        if let onSelectAsset, availableAssets.isEmpty == false {
+            Menu {
+                ForEach(availableAssets) { asset in
+                    Button("\(asset.displayName) (\(asset.baseCurrency))") {
+                        onSelectAsset(asset)
+                    }
+                }
+            } label: {
+                row
+            }
+            .buttonStyle(.plain)
+        } else {
+            row
+        }
+    }
+
+    // MARK: Sections
+
+    private var sideToggle: some View {
+        HStack(spacing: Spacing.xs) {
+            sideButton("Buy", side: .buy, color: .voltAccent)
+            sideButton("Sell", side: .sell, color: .voltDanger)
+        }
+        .padding(Spacing.xs)
+        .voltSurfaceStyle(cornerRadius: Radius.button)
+    }
+
+    private func sideButton(_ title: String, side: OrderSide, color: Color) -> some View {
+        let isSelected = viewModel.side == side
+        return Button {
+            viewModel.side = side
+        } label: {
+            Text(title)
+                .font(Typography.body.weight(isSelected ? .bold : .semibold))
+                .foregroundStyle(isSelected ? Color.voltBackground : color.opacity(0.85))
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(
+                    isSelected ? color : .clear,
+                    in: RoundedRectangle(cornerRadius: Radius.button - 2, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var amountCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text("Amount (USD)")
+                    .font(Typography.secondary)
+                    .foregroundStyle(Color.voltTextSecondary)
+                HStack(alignment: .firstTextBaseline, spacing: Spacing.xs) {
+                    Text("$")
+                        .font(Typography.amountEntry)
+                        .foregroundStyle(amountText.isEmpty ? Color.voltTextTertiary : Color.voltTextPrimary)
+                    TextField(
+                        "",
+                        text: $amountText,
+                        prompt: Text("0").foregroundStyle(Color.voltTextTertiary)
+                    )
+                    .keyboardType(.decimalPad)
+                    .font(Typography.amountEntry)
+                    .foregroundStyle(Color.voltTextPrimary)
+                    .tint(Color.voltAccent)
+                }
+                Text("≈ \(estimatedQuantityText) \(viewModel.asset.baseCurrency)")
+                    .font(Typography.monoBody)
+                    .foregroundStyle(Color.voltTextSecondary)
+            }
+        }
+    }
+
+    private var estimatedQuantityText: String {
+        guard let quantity = Decimal(string: viewModel.quantityText), quantity > 0 else { return "0" }
+        return quantity.voltPriceString(precision: 8)
+    }
+
+    private var slippageSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Slippage tolerance")
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            HStack(spacing: Spacing.sm) {
+                ForEach(SlippagePreset.allCases, id: \.self) { preset in
+                    FilterPill(
+                        title: slippageLabel(preset),
+                        isSelected: viewModel.slippagePreset == preset,
+                        isMono: true,
+                        expands: true
+                    ) {
+                        viewModel.setSlippage(preset)
+                    }
+                }
+            }
+        }
+    }
+
+    private func slippageLabel(_ preset: SlippagePreset) -> String {
+        guard preset != .off else { return "Off" }
+        let percent = preset.basisPoints / 100
+        return "\(percent.formatted(.number.precision(.fractionLength(0...2))))%"
+    }
+
+    private var balanceRow: some View {
+        HStack {
+            Text("Available balance")
+                .font(Typography.bodySecondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            Spacer()
+            Text("$" + viewModel.availableCash.voltPriceString(precision: 2))
+                .font(Typography.monoBodySecondary)
+                .foregroundStyle(Color.white.opacity(0.6))
+        }
+    }
+
+    @ViewBuilder
+    private var messages: some View {
+        if case .invalid(let message) = viewModel.validationState, amountText.isEmpty == false {
+            Text(message)
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltDanger)
+        }
+        if let riskWarning = viewModel.riskWarning {
+            Text(riskWarning)
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+        }
+        if let submissionError = viewModel.submissionError {
+            Text(submissionError)
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltDanger)
+        }
+    }
+
+    private func recapCard(_ fill: TradeExecutionResult) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Last fill")
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            SectionCard {
+                VStack(alignment: .leading, spacing: Spacing.lg) {
+                    HStack(spacing: Spacing.sm + 2) {
+                        CoinBadge(baseCurrency: viewModel.asset.baseCurrency, size: 24)
+                        Text(viewModel.asset.displayName)
+                            .font(Typography.body.weight(.semibold))
+                            .foregroundStyle(Color.voltTextPrimary)
+                        Text(viewModel.asset.baseCurrency)
+                            .font(Typography.monoSecondary)
+                            .foregroundStyle(Color.voltTextSecondary)
+                        Spacer()
+                        Text(fill.orderRecord.side == .buy ? "BUY" : "SELL")
+                            .font(Typography.monoCaption.weight(.bold))
+                            .foregroundStyle(fill.orderRecord.side == .buy ? Color.voltAccent : Color.voltDanger)
+                            .padding(.horizontal, Spacing.sm)
+                            .padding(.vertical, 2)
+                            .background(
+                                (fill.orderRecord.side == .buy ? Color.voltAccent : Color.voltDanger).opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: Radius.tag, style: .continuous)
+                            )
+                    }
+                    HStack(spacing: Spacing.lg) {
+                        recapField(
+                            label: "Price filled",
+                            value: "$" + fill.orderRecord.executedPrice.voltPriceString(precision: viewModel.asset.pricePrecision)
+                        )
+                        recapField(
+                            label: "Quantity",
+                            value: "\(fill.orderRecord.quantity.voltPriceString(precision: 8)) \(viewModel.asset.baseCurrency)"
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func recapField(label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text(label)
+                .font(Typography.caption)
+                .foregroundStyle(Color.voltTextTertiary)
+            Text(value)
+                .font(Typography.monoBody)
+                .foregroundStyle(Color.voltTextPrimary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Amount <-> quantity sync (presentation only)
+
+    /// Prefills the USD amount once from the profile's default order size.
+    private func seedAmountIfNeeded() {
+        guard didSeedAmount == false,
+              amountText.isEmpty,
+              let price = viewModel.latestPrice,
+              let quantity = Decimal(string: viewModel.quantityText), quantity > 0
+        else { return }
+        didSeedAmount = true
+        var cost = quantity * price
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &cost, 2, .plain)
+        amountText = NSDecimalNumber(decimal: rounded).stringValue
+    }
+
+    private func syncQuantityFromAmount() {
+        didSeedAmount = true
+        let normalized = amountText.replacingOccurrences(of: ",", with: ".")
+        guard let amount = Decimal(string: normalized), amount > 0,
+              let price = viewModel.latestPrice, price > 0
+        else {
+            viewModel.quantityText = ""
+            return
+        }
+        var quantity = amount / price
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &quantity, 8, .plain)
+        viewModel.quantityText = NSDecimalNumber(decimal: rounded).stringValue
+    }
 }
 
-#Preview("Valid") {
-    NavigationStack {
-        TradeTicketView(
-            viewModel: TradeTicketViewModel(
-                asset: SupportedAssets.demoAssets[0],
-                marketDataRepository: TradeTicketPreviewMarketDataRepository(
-                    quote: Quote(symbol: "BTC/USD", lastPrice: 68_000, changePercent: 0.3, timestamp: .now, source: "preview", isSimulated: true)
-                ),
-                portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 50_000),
-                tradingSimulationService: TradeTicketPreviewTradingService()
-            )
+#Preview("Buy") {
+    TradeTicketView(
+        viewModel: TradeTicketViewModel(
+            asset: SupportedAssets.demoAssets[0],
+            marketDataRepository: TradeTicketPreviewMarketDataRepository(
+                quote: Quote(symbol: "BTC/USD", lastPrice: 63_842.10, changePercent: 2.34, timestamp: .now, source: "preview", isSimulated: true)
+            ),
+            portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 24_860),
+            tradingSimulationService: TradeTicketPreviewTradingService()
         )
-    }
+    )
 }
 
-#Preview("Invalid") {
-    NavigationStack {
-        TradeTicketView(viewModel: {
-            let vm = TradeTicketViewModel(
-                asset: SupportedAssets.demoAssets[1],
-                marketDataRepository: TradeTicketPreviewMarketDataRepository(
-                    quote: Quote(symbol: "ETH/USD", lastPrice: 3_200, changePercent: 0, timestamp: .now, source: "preview", isSimulated: true)
-                ),
-                portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 100),
-                tradingSimulationService: TradeTicketPreviewTradingService()
-            )
-            vm.quantityText = "1"
-            return vm
-        }())
-    }
+#Preview("Sell") {
+    TradeTicketView(viewModel: {
+        let vm = TradeTicketViewModel(
+            asset: SupportedAssets.demoAssets[1],
+            marketDataRepository: TradeTicketPreviewMarketDataRepository(
+                quote: Quote(symbol: "ETH/USD", lastPrice: 3_318.72, changePercent: 1.12, timestamp: .now, source: "preview", isSimulated: true)
+            ),
+            portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 100),
+            tradingSimulationService: TradeTicketPreviewTradingService()
+        )
+        vm.side = .sell
+        vm.quantityText = "1"
+        return vm
+    }())
 }
 
-#Preview("Submitted") {
-    NavigationStack {
-        TradeTicketView(viewModel: {
-            let vm = TradeTicketViewModel(
-                asset: SupportedAssets.demoAssets[2],
-                marketDataRepository: TradeTicketPreviewMarketDataRepository(
-                    quote: Quote(symbol: "SOL/USD", lastPrice: 180, changePercent: 0, timestamp: .now, source: "preview", isSimulated: true)
-                ),
-                portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 10_000),
-                tradingSimulationService: TradeTicketPreviewTradingService()
-            )
-            vm.quantityText = "2"
-            vm.submitOrder()
-            return vm
-        }())
-    }
+#Preview("Filled") {
+    TradeTicketView(viewModel: {
+        let vm = TradeTicketViewModel(
+            asset: SupportedAssets.demoAssets[2],
+            marketDataRepository: TradeTicketPreviewMarketDataRepository(
+                quote: Quote(symbol: "SOL/USD", lastPrice: 180, changePercent: 0.4, timestamp: .now, source: "preview", isSimulated: true)
+            ),
+            portfolioRepository: TradeTicketPreviewPortfolioRepository(cash: 10_000),
+            tradingSimulationService: TradeTicketPreviewTradingService()
+        )
+        vm.quantityText = "2"
+        vm.submitOrder()
+        return vm
+    }())
 }
 
 private final class TradeTicketPreviewMarketDataRepository: MarketDataRepository {

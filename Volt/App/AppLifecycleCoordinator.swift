@@ -6,9 +6,13 @@ internal import os
 final class AppLifecycleCoordinator {
     enum Tab: String, Codable {
         case watchlist
+        case chart
         case portfolio
-        case history
+        case trade
         case analytics
+        // Legacy tab values kept so previously persisted UI state still decodes;
+        // History and Settings are no longer tabs and are remapped on restore.
+        case history
         case settings
     }
 
