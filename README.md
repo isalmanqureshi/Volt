@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./docs/banner.png" alt="Volt — Open-source SwiftUI crypto trading simulator" width="100%" />
+  <img src="./docs/media/volt_preview_poster.png" alt="Volt — Open-source SwiftUI crypto trading simulator" width="100%" />
 </p>
 
 <div align="center">
@@ -27,7 +27,7 @@
     muted
     playsinline>
     <a href="https://github.com/user-attachments/assets/f02fcacc-501f-4527-8c39-41caee57e0fc">
-      <img src="./docs/media/volt_preview_poster.png" width="490" alt="▶ Watch the Volt walkthrough">
+      <img src="./docs/banner.png" width="490" alt="▶ Watch the Volt walkthrough">
     </a>
   </video>
 </p>
