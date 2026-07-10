@@ -23,12 +23,15 @@ final class WatchlistViewModel: ObservableObject {
 
     private let marketDataRepository: MarketDataRepository
     private let assetsBySymbol: [String: Asset]
+    /// Row order is fixed by symbol, so sort once here instead of on every quote emission.
+    private let sortedAssets: [Asset]
     private var cancellables = Set<AnyCancellable>()
     private let sparklineCapacity = 40
 
     init(marketDataRepository: MarketDataRepository, assets: [Asset]) {
         self.marketDataRepository = marketDataRepository
         self.assetsBySymbol = Dictionary(uniqueKeysWithValues: assets.map { ($0.symbol, $0) })
+        self.sortedAssets = assets.sorted(by: { $0.symbol < $1.symbol })
         bind()
     }
 
@@ -51,9 +54,10 @@ final class WatchlistViewModel: ObservableObject {
 
     private func bind() {
         marketDataRepository.quotesPublisher
-            .map { [weak self] quotes in
-                quotes.compactMap { quote -> RowState? in
-                    guard let asset = self?.assetsBySymbol[quote.symbol] else { return nil }
+            .map { [sortedAssets] quotes in
+                let quotesBySymbol = Dictionary(quotes.map { ($0.symbol, $0) }, uniquingKeysWith: { _, latest in latest })
+                return sortedAssets.compactMap { asset -> RowState? in
+                    guard let quote = quotesBySymbol[asset.symbol] else { return nil }
                     return RowState(
                         id: asset.id,
                         symbol: quote.symbol,
@@ -64,8 +68,8 @@ final class WatchlistViewModel: ObservableObject {
                         isSimulated: quote.isSimulated
                     )
                 }
-                .sorted(by: { $0.symbol < $1.symbol })
             }
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .assign(to: &$rows)
 
@@ -74,18 +78,23 @@ final class WatchlistViewModel: ObservableObject {
             .sink { [weak self] quotes in
                 guard let self else { return }
                 var lines = self.sparklines
+                var didChange = false
                 for quote in quotes {
                     let value = NSDecimalNumber(decimal: quote.lastPrice).doubleValue
                     var buffer = lines[quote.symbol] ?? []
-                    if buffer.last != value {
-                        buffer.append(value)
-                    }
+                    guard buffer.last != value else { continue }
+                    buffer.append(value)
                     if buffer.count > self.sparklineCapacity {
                         buffer.removeFirst(buffer.count - self.sparklineCapacity)
                     }
                     lines[quote.symbol] = buffer
+                    didChange = true
                 }
-                self.sparklines = lines
+                // Reassigning @Published republishes to every row's sparkline view,
+                // so skip it when no symbol actually moved.
+                if didChange {
+                    self.sparklines = lines
+                }
             }
             .store(in: &cancellables)
 

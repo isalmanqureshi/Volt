@@ -26,6 +26,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     private var latestActivityBySymbol: [String: [ActivityEvent]] = [:]
     private var sortedActivityAscending: [ActivityEvent] = []
     private var basePerformancePoints: [PerformancePoint] = []
+    private var realizedAggregates = RealizedAggregates()
     private var cancellables = Set<AnyCancellable>()
 
     private(set) var structuralRecomputeCount = 0
@@ -143,6 +144,7 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
         latestActivityBySymbol = Dictionary(grouping: latestActivity.sorted(by: { $0.timestamp > $1.timestamp }), by: \.symbol)
         sortedActivityAscending = latestActivity.sorted(by: { $0.timestamp < $1.timestamp })
         basePerformancePoints = makeBasePerformancePoints()
+        realizedAggregates = RealizedAggregates(entries: latestRealized)
 
         dailyPerformanceSubject.send(makeDailyBuckets())
         realizedDistributionSubject.send(makeDistributionBuckets())
@@ -184,16 +186,15 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func makeSummary() -> PortfolioAnalyticsSummary {
-        let closed = latestRealized
-        let wins = closed.map(\.realizedPnL).filter { $0 > 0 }
-        let losses = closed.map(\.realizedPnL).filter { $0 < 0 }
-
-        let averageWin = wins.isEmpty ? nil : wins.reduce(Decimal.zero, +) / Decimal(wins.count)
-        let averageLoss = losses.isEmpty ? nil : losses.reduce(Decimal.zero, +) / Decimal(losses.count)
-        let totalWins = wins.reduce(Decimal.zero, +)
-        let totalLossMagnitude = losses.reduce(Decimal.zero) { $0 + abs($1) }
-        let winRate = closed.isEmpty ? nil : (Decimal(wins.count) / Decimal(closed.count))
-        let profitFactor: Decimal? = totalLossMagnitude == 0 ? (totalWins > 0 ? Decimal.greatestFiniteMagnitude : nil) : (totalWins / totalLossMagnitude)
+        // Aggregates are maintained by recomputeStructural (per trade event), so
+        // this stays O(1) even though it runs on every summary emission.
+        let aggregates = realizedAggregates
+        let averageWin = aggregates.winCount > 0 ? aggregates.totalWins / Decimal(aggregates.winCount) : nil
+        let averageLoss = aggregates.lossCount > 0 ? aggregates.totalLosses / Decimal(aggregates.lossCount) : nil
+        let winRate = aggregates.closedCount > 0 ? (Decimal(aggregates.winCount) / Decimal(aggregates.closedCount)) : nil
+        let profitFactor: Decimal? = aggregates.totalLossMagnitude == 0
+            ? (aggregates.totalWins > 0 ? Decimal.greatestFiniteMagnitude : nil)
+            : (aggregates.totalWins / aggregates.totalLossMagnitude)
 
         let currentEquity = latestSummary.totalEquity
         let inferredStartingBalance = currentEquity - latestSummary.realizedPnL - latestSummary.unrealizedPnL
@@ -212,9 +213,9 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
             averageLoss: averageLoss,
             profitFactor: profitFactor,
             winRate: winRate,
-            totalClosedTrades: closed.count,
-            bestTrade: closed.map(\.realizedPnL).max(),
-            worstTrade: closed.map(\.realizedPnL).min(),
+            totalClosedTrades: aggregates.closedCount,
+            bestTrade: aggregates.bestTrade,
+            worstTrade: aggregates.worstTrade,
             currentEquity: currentEquity,
             startingBalance: safeStartingBalance,
             netReturnPercent: netReturnPercent
@@ -265,17 +266,25 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
     }
 
     private func makePerformancePoints(summary: PortfolioAnalyticsSummary) -> [PerformancePoint] {
+        // basePerformancePoints is kept sorted by recomputeStructural and the live
+        // point is stamped "now", so appending preserves order without re-sorting
+        // O(n log n) on every summary emission. The insert branch only runs if the
+        // injected clock lags the newest checkpoint.
         var points = basePerformancePoints
-        points.append(
-            PerformancePoint(
-                timestamp: nowProvider(),
-                equity: latestSummary.totalEquity,
-                cashBalance: latestSummary.cashBalance,
-                unrealizedPnL: latestSummary.unrealizedPnL,
-                cumulativeRealizedPnL: latestSummary.realizedPnL
-            )
+        let livePoint = PerformancePoint(
+            timestamp: nowProvider(),
+            equity: latestSummary.totalEquity,
+            cashBalance: latestSummary.cashBalance,
+            unrealizedPnL: latestSummary.unrealizedPnL,
+            cumulativeRealizedPnL: latestSummary.realizedPnL
         )
-        return points.sorted(by: { $0.timestamp < $1.timestamp })
+        if let last = points.last, last.timestamp > livePoint.timestamp {
+            let insertionIndex = points.firstIndex(where: { $0.timestamp > livePoint.timestamp }) ?? points.endIndex
+            points.insert(livePoint, at: insertionIndex)
+        } else {
+            points.append(livePoint)
+        }
+        return points
     }
 
     private func makeDailyBuckets(calendar: Calendar = .current) -> [DailyPerformanceBucket] {
@@ -292,6 +301,39 @@ final class DefaultPortfolioAnalyticsService: PortfolioAnalyticsService {
                 )
             }
             .sorted(by: { $0.day < $1.day })
+    }
+
+    /// Single-pass rollup of the realized-trade history. Recomputed only when the
+    /// history changes (per trade), so the per-tick summary path never walks the
+    /// full — unbounded — trade list.
+    private struct RealizedAggregates {
+        var closedCount = 0
+        var winCount = 0
+        var lossCount = 0
+        var totalWins = Decimal.zero
+        var totalLosses = Decimal.zero
+        var totalLossMagnitude = Decimal.zero
+        var bestTrade: Decimal?
+        var worstTrade: Decimal?
+
+        init() {}
+
+        init(entries: [RealizedPnLEntry]) {
+            closedCount = entries.count
+            for entry in entries {
+                let pnl = entry.realizedPnL
+                if pnl > 0 {
+                    winCount += 1
+                    totalWins += pnl
+                } else if pnl < 0 {
+                    lossCount += 1
+                    totalLosses += pnl
+                    totalLossMagnitude += abs(pnl)
+                }
+                bestTrade = bestTrade.map { max($0, pnl) } ?? pnl
+                worstTrade = worstTrade.map { min($0, pnl) } ?? pnl
+            }
+        }
     }
 
     private func makeDistributionBuckets() -> [RealizedDistributionBucket] {

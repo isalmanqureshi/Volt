@@ -10,6 +10,9 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
     private let realizedPnLSubject: CurrentValueSubject<[RealizedPnLEntry], Never>
 
     private var cashBalance: Decimal
+    /// Running sum of realized P&L, adjusted on close instead of re-reduced over
+    /// the full (unbounded) history on every quote emission.
+    private var realizedPnLTotal: Decimal = 0
     private var latestQuotesBySymbol: [String: Quote] = [:]
     private let persistenceStore: PortfolioPersistenceStore?
     private var cancellables = Set<AnyCancellable>()
@@ -66,12 +69,13 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             self.realizedPnLSubject = CurrentValueSubject(defaultState.realizedHistory)
         }
 
+        self.realizedPnLTotal = self.realizedPnLSubject.value.reduce(Decimal.zero) { $0 + $1.realizedPnL }
         self.summarySubject = CurrentValueSubject(
             PortfolioSummary(
                 cashBalance: self.cashBalance,
                 positionsMarketValue: 0,
                 unrealizedPnL: 0,
-                realizedPnL: self.realizedPnLSubject.value.reduce(Decimal.zero) { $0 + $1.realizedPnL },
+                realizedPnL: self.realizedPnLTotal,
                 totalEquity: self.cashBalance,
                 dayChange: 0
             )
@@ -100,6 +104,7 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
 
     func replaceState(_ state: PersistedPortfolioState) {
         cashBalance = state.cashBalance
+        realizedPnLTotal = state.realizedPnLHistory.reduce(Decimal.zero) { $0 + $1.realizedPnL }
         positionsSubject.send(state.openPositions)
         orderHistorySubject.send(state.orderHistory)
         activityTimelineSubject.send(state.activityTimeline)
@@ -277,6 +282,7 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
         )
 
         cashBalance = updatedCashBalance
+        realizedPnLTotal += realizedPnL
         positionsSubject.send(positions)
         orderHistorySubject.send(orders)
         activityTimelineSubject.send(timeline)
@@ -309,7 +315,7 @@ final class InMemoryPortfolioRepository: PortfolioRepository {
             partial + (position.currentPrice * position.quantity)
         }
         let unrealized = updated.reduce(Decimal.zero) { $0 + $1.unrealizedPnL }
-        let realized = realizedPnLSubject.value.reduce(Decimal.zero) { $0 + $1.realizedPnL }
+        let realized = realizedPnLTotal
         let totalEquity = cashBalance + positionsMarketValue
 
         positionsSubject.send(updated)

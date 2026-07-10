@@ -61,6 +61,10 @@ struct CandlestickChartView: View {
     }
 
     var body: some View {
+        // Evaluated once per render: as a computed property access inside the
+        // ForEach it re-sorted the full candle array twice per candle.
+        let halfWidthSeconds = candleHalfWidthSeconds
+
         Chart {
             ForEach(candles, id: \.timestamp) { candle in
                 let isUp = candle.close >= candle.open
@@ -75,8 +79,8 @@ struct CandlestickChartView: View {
                 .lineStyle(.init(lineWidth: 1))
 
                 RectangleMark(
-                    xStart: .value("Start", candle.timestamp.addingTimeInterval(-candleHalfWidthSeconds)),
-                    xEnd: .value("End", candle.timestamp.addingTimeInterval(candleHalfWidthSeconds)),
+                    xStart: .value("Start", candle.timestamp.addingTimeInterval(-halfWidthSeconds)),
+                    xEnd: .value("End", candle.timestamp.addingTimeInterval(halfWidthSeconds)),
                     yStart: .value("Open", candle.open.chartValue),
                     yEnd: .value("Close", candle.close.chartValue)
                 )

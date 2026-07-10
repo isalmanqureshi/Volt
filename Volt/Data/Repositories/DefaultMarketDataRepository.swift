@@ -51,6 +51,9 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     private var lastBackgroundDate: Date?
 
     private let quotesSubject = CurrentValueSubject<[Quote], Never>([])
+    /// Symbol-keyed mirror of `quotesSubject` so per-symbol lookups stay O(1)
+    /// instead of scanning the array on every tick.
+    private var quotesBySymbol: [String: Quote] = [:]
     private let seedingStateSubject = CurrentValueSubject<MarketSeedingState, Never>(.idle)
     private let dataModeSubject = CurrentValueSubject<MarketDataMode, Never>(.liveSeeded)
 
@@ -76,7 +79,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         self.defaultCandleOutputSize = defaultCandleOutputSize
         self.reseedInterval = reseedInterval
         self.cacheStore = cacheStore
-        quotesSubject.send(cacheStore.loadQuotes())
+        publishQuotes(cacheStore.loadQuotes())
         bindSimulation()
     }
 
@@ -136,7 +139,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
         seedingStateSubject.send(.seeding)
         do {
             let initialQuotes = try await seedProvider.fetchInitialQuotes(for: symbols)
-            quotesSubject.send(initialQuotes)
+            publishQuotes(initialQuotes)
             cacheStore.saveQuotes(initialQuotes)
             if hadSeededBeforeRun && forceReseed {
                 simulationEngine.reseed(with: initialQuotes)
@@ -169,7 +172,7 @@ final class DefaultMarketDataRepository: MarketDataRepository {
                 dataModeSubject.send(.offlineDeterministic)
                 AppLogger.market.warning("Offline fallback activated with deterministic quotes reason=\(reason, privacy: .public)")
             }
-            quotesSubject.send(fallback)
+            publishQuotes(fallback)
             if hadSeededBeforeRun && forceReseed {
                 simulationEngine.reseed(with: fallback)
             } else {
@@ -183,12 +186,13 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     func quote(for symbol: String) -> Quote? {
-        quotesSubject.value.first(where: { $0.symbol == symbol })
+        quotesBySymbol[symbol]
     }
 
     func quotePublisher(for symbol: String) -> AnyPublisher<Quote?, Never> {
         quotesPublisher
             .map { quotes in quotes.first(where: { $0.symbol == symbol }) }
+            .removeDuplicates()
             .eraseToAnyPublisher()
     }
 
@@ -230,11 +234,20 @@ final class DefaultMarketDataRepository: MarketDataRepository {
     }
 
     private func bindSimulation() {
-        simulationEngine.ticksPublisher
-            .sink { [weak self] tick in
-                guard let self else { return }
+        // One burst = one pass over the quotes + one downstream emission, instead
+        // of a full-array republish per symbol per tick.
+        simulationEngine.tickBatchesPublisher
+            .sink { [weak self] ticks in
+                guard let self, ticks.isEmpty == false else { return }
                 var quotes = self.quotesSubject.value
-                if let index = quotes.firstIndex(where: { $0.symbol == tick.symbol }) {
+                var indexBySymbol: [String: Int] = [:]
+                indexBySymbol.reserveCapacity(quotes.count)
+                for (index, quote) in quotes.enumerated() {
+                    indexBySymbol[quote.symbol] = index
+                }
+                var didUpdate = false
+                for tick in ticks {
+                    guard let index = indexBySymbol[tick.symbol] else { continue }
                     let existing = quotes[index]
                     quotes[index] = Quote(
                         symbol: tick.symbol,
@@ -244,10 +257,20 @@ final class DefaultMarketDataRepository: MarketDataRepository {
                         source: existing.source,
                         isSimulated: tick.isSimulated
                     )
-                    self.quotesSubject.send(quotes)
+                    didUpdate = true
+                }
+                if didUpdate {
+                    self.publishQuotes(quotes)
                 }
             }
             .store(in: &cancellables)
+    }
+
+    /// Single funnel for quote updates: keeps the symbol index in sync with the
+    /// published array.
+    private func publishQuotes(_ quotes: [Quote]) {
+        quotesBySymbol = Dictionary(quotes.map { ($0.symbol, $0) }, uniquingKeysWith: { _, latest in latest })
+        quotesSubject.send(quotes)
     }
 
     private func defaultFallbackPrice(for symbol: String) -> Decimal {

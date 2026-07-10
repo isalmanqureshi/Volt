@@ -11,9 +11,11 @@ final class DefaultMarketSimulationEngine: MarketSimulationEngine {
     private var tickTask: Task<Void, Never>?
 
     private let tickSubject = PassthroughSubject<MarketTick, Never>()
+    private let tickBatchSubject = PassthroughSubject<[MarketTick], Never>()
     private let stateSubject = CurrentValueSubject<StreamConnectionState, Never>(.idle)
 
     var ticksPublisher: AnyPublisher<MarketTick, Never> { tickSubject.eraseToAnyPublisher() }
+    var tickBatchesPublisher: AnyPublisher<[MarketTick], Never> { tickBatchSubject.eraseToAnyPublisher() }
     var connectionStatePublisher: AnyPublisher<StreamConnectionState, Never> { stateSubject.eraseToAnyPublisher() }
 
     init(
@@ -86,9 +88,13 @@ final class DefaultMarketSimulationEngine: MarketSimulationEngine {
         stateLock.unlock()
 
         let now = clock.now
-        for (symbol, price) in nextPrices {
-            tickSubject.send(MarketTick(symbol: symbol, price: price, timestamp: now, isSimulated: true))
+        let batch = nextPrices.map { symbol, price in
+            MarketTick(symbol: symbol, price: price, timestamp: now, isSimulated: true)
         }
+        for tick in batch {
+            tickSubject.send(tick)
+        }
+        tickBatchSubject.send(batch)
     }
 
     private func simulatePrice(from lastPrice: Decimal) -> Decimal {

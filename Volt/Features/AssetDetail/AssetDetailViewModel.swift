@@ -100,6 +100,7 @@ final class AssetDetailViewModel: ObservableObject {
         AppLogger.market.debug("Asset detail quote subscription started for \(self.asset.symbol, privacy: .public)")
 
         quoteCancellable = marketDataRepository.quotePublisher(for: asset.symbol)
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] quote in
                 self?.latestQuote = quote
@@ -112,6 +113,7 @@ final class AssetDetailViewModel: ObservableObject {
 
         positionCancellable = portfolioRepository.positionsPublisher
             .map { [asset] positions in positions.first(where: { $0.symbol == asset.symbol }) }
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] position in
                 self?.openPosition = position
