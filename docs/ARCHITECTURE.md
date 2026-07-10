@@ -305,6 +305,20 @@ The app needs realistic initial prices without depending on a continuous streami
 - Service validates quantity, symbol support, required position for sell, quote presence.
 - Fill is applied immediately through portfolio repository.
 
+### Pending orders (limit / stop)
+
+- Non-market tickets rest in `DefaultPendingOrderMatchingService`, a local order
+  book keyed by symbol and fed by the shared tick stream.
+- Crossing rules: limit buy fills at/below trigger, limit sell at/above, stop
+  buy at/above (breakout), stop sell at/below (stop-loss).
+- Fills execute at the crossing tick's price (never the trigger price) with no
+  slippage, reuse `PortfolioRepository.applyFilledOrder` as the single mutation
+  path, and are re-validated at fill time — an unaffordable or uncovered order
+  is kept in the book as `rejected` instead of mutating the portfolio.
+- Each order fills at most once: it is removed from the book before the
+  portfolio mutation runs.
+- The book is session-scoped (not persisted across launches).
+
 ### Position lifecycle
 
 - **Buy**: open new position or increase existing with weighted average cost.

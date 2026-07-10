@@ -8,6 +8,7 @@ final class AppContainer: ObservableObject {
     let marketDataRepository: MarketDataRepository
     let portfolioRepository: PortfolioRepository
     let tradingSimulationService: TradingSimulationService
+    let pendingOrderService: PendingOrderMatching
     let analyticsService: PortfolioAnalyticsService
     let csvExportService: CSVExportService
     let checkpointService: AccountSnapshotCheckpointing
@@ -24,6 +25,7 @@ final class AppContainer: ObservableObject {
         marketDataRepository: MarketDataRepository,
         portfolioRepository: PortfolioRepository,
         tradingSimulationService: TradingSimulationService,
+        pendingOrderService: PendingOrderMatching,
         analyticsService: PortfolioAnalyticsService,
         csvExportService: CSVExportService,
         checkpointService: AccountSnapshotCheckpointing,
@@ -37,6 +39,7 @@ final class AppContainer: ObservableObject {
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.tradingSimulationService = tradingSimulationService
+        self.pendingOrderService = pendingOrderService
         self.analyticsService = analyticsService
         self.csvExportService = csvExportService
         self.checkpointService = checkpointService
@@ -93,6 +96,12 @@ final class AppContainer: ObservableObject {
             supportedSymbols: configuration.enabledAssets.map(\.symbol),
             slippageBpsProvider: { preferencesStore.currentPreferences.simulatorRisk.slippagePreset.basisPoints }
         )
+        let pendingOrderService = DefaultPendingOrderMatchingService(
+            portfolioRepository: portfolioRepository,
+            marketDataRepository: marketDataRepository,
+            checkpointService: checkpointService,
+            supportedSymbols: configuration.enabledAssets.map(\.symbol)
+        )
         let analyticsService = DefaultPortfolioAnalyticsService(
             repository: portfolioRepository,
             checkpointService: checkpointService,
@@ -118,6 +127,7 @@ final class AppContainer: ObservableObject {
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
             tradingSimulationService: tradingSimulationService,
+            pendingOrderService: pendingOrderService,
             analyticsService: analyticsService,
             csvExportService: csvExportService,
             checkpointService: checkpointService,
@@ -186,7 +196,8 @@ final class AppContainer: ObservableObject {
             asset: asset,
             marketDataRepository: marketDataRepository,
             portfolioRepository: portfolioRepository,
-            defaultCandleOutputSize: configuration.defaultCandleOutputSize
+            defaultCandleOutputSize: configuration.defaultCandleOutputSize,
+            pendingOrderService: pendingOrderService
         )
     }
 
@@ -198,7 +209,8 @@ final class AppContainer: ObservableObject {
             portfolioRepository: portfolioRepository,
             tradingSimulationService: tradingSimulationService,
             preferencesStore: preferencesStore,
-            tradeInsightService: insightService
+            tradeInsightService: insightService,
+            pendingOrderService: pendingOrderService
         )
     }
 

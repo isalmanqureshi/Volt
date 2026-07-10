@@ -41,6 +41,12 @@ struct AssetDetailView: View {
                         .padding(.top, Spacing.lg)
                 }
 
+                if viewModel.pendingOrders.isEmpty == false {
+                    pendingOrdersCard
+                        .padding(.horizontal, Spacing.gutter)
+                        .padding(.top, Spacing.lg)
+                }
+
                 tradeActions
                     .padding(.horizontal, Spacing.gutter)
                     .padding(.top, Spacing.lg)
@@ -266,6 +272,47 @@ struct AssetDetailView: View {
                         )
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var pendingOrdersCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                SectionLabel("Pending orders")
+                ForEach(viewModel.pendingOrders) { order in
+                    pendingOrderRow(order)
+                }
+            }
+        }
+    }
+
+    private func pendingOrderRow(_ order: PendingOrder) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack {
+                Text("\(order.type == .limit ? "LIMIT" : "STOP") \(order.side == .buy ? "BUY" : "SELL")")
+                    .font(Typography.monoCaption.weight(.bold))
+                    .foregroundStyle(order.side == .buy ? Color.voltAccent : Color.voltDanger)
+                Spacer()
+                Button("Cancel") {
+                    viewModel.cancelPendingOrder(order)
+                }
+                .font(Typography.monoCaption)
+                .foregroundStyle(Color.voltTextSecondary)
+                .buttonStyle(.plain)
+            }
+            Text("\(order.quantity.voltPriceString(precision: 8)) @ $\(order.triggerPrice.voltPriceString(precision: viewModel.asset.pricePrecision))")
+                .font(Typography.monoBody)
+                .foregroundStyle(Color.voltTextPrimary)
+            switch order.status {
+            case .pending:
+                Text("Waiting for the price to cross the trigger")
+                    .font(Typography.caption)
+                    .foregroundStyle(Color.voltTextTertiary)
+            case .rejected(let reason):
+                Text("Rejected: \(reason)")
+                    .font(Typography.caption)
+                    .foregroundStyle(Color.voltDanger)
             }
         }
     }

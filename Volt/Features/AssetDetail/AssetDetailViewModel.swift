@@ -45,6 +45,7 @@ final class AssetDetailViewModel: ObservableObject {
     @Published var chartState: ChartState = .idle
     @Published var selectedRange: ChartRange = .oneDay
     @Published private(set) var openPosition: Position?
+    @Published private(set) var pendingOrders: [PendingOrder] = []
 
     let asset: Asset
 
@@ -78,17 +79,20 @@ final class AssetDetailViewModel: ObservableObject {
 
     private let marketDataRepository: MarketDataRepository
     private let portfolioRepository: PortfolioRepository
+    private let pendingOrderService: PendingOrderMatching?
     private let defaultCandleOutputSize: Int
     private var quoteCancellable: AnyCancellable?
     private var positionCancellable: AnyCancellable?
+    private var pendingOrdersCancellable: AnyCancellable?
     private var candleTask: Task<Void, Never>?
     private var hasStarted = false
 
-    init(asset: Asset, marketDataRepository: MarketDataRepository, portfolioRepository: PortfolioRepository, defaultCandleOutputSize: Int) {
+    init(asset: Asset, marketDataRepository: MarketDataRepository, portfolioRepository: PortfolioRepository, defaultCandleOutputSize: Int, pendingOrderService: PendingOrderMatching? = nil) {
         self.asset = asset
         self.marketDataRepository = marketDataRepository
         self.portfolioRepository = portfolioRepository
         self.defaultCandleOutputSize = defaultCandleOutputSize
+        self.pendingOrderService = pendingOrderService
     }
 
 
@@ -118,6 +122,18 @@ final class AssetDetailViewModel: ObservableObject {
             .sink { [weak self] position in
                 self?.openPosition = position
             }
+
+        pendingOrdersCancellable = pendingOrderService?.pendingOrdersPublisher
+            .map { [asset] orders in orders.filter { $0.symbol == asset.symbol } }
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] orders in
+                self?.pendingOrders = orders
+            }
+    }
+
+    func cancelPendingOrder(_ order: PendingOrder) {
+        pendingOrderService?.cancel(id: order.id)
     }
 
 
@@ -125,6 +141,7 @@ final class AssetDetailViewModel: ObservableObject {
         AppLogger.market.debug("Asset detail quote subscription stopped for \(self.asset.symbol, privacy: .public)")
         quoteCancellable?.cancel()
         positionCancellable?.cancel()
+        pendingOrdersCancellable?.cancel()
         candleTask?.cancel()
         hasStarted = false
     }

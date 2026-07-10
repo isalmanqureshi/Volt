@@ -12,6 +12,9 @@ final class TradeTicketViewModel: ObservableObject {
 
     @Published private(set) var asset: Asset
     @Published var side: OrderSide
+    @Published var orderType: OrderType = .market
+    @Published var triggerPriceText: String = ""
+    @Published private(set) var placedPendingOrder: PendingOrder?
     @Published var quantityText: String = ""
     @Published private(set) var latestPrice: Decimal?
     @Published private(set) var estimatedCost: Decimal = 0
@@ -33,6 +36,7 @@ final class TradeTicketViewModel: ObservableObject {
     private let tradingSimulationService: TradingSimulationService
     private let preferencesStore: AppPreferencesProviding
     private let tradeInsightService: TradeSummaryInsightService
+    private let pendingOrderService: PendingOrderMatching?
     private let logger = Logger(subsystem: "com.volt.app", category: "trade-ticket")
     private var cancellables = Set<AnyCancellable>()
 
@@ -43,7 +47,8 @@ final class TradeTicketViewModel: ObservableObject {
         portfolioRepository: PortfolioRepository,
         tradingSimulationService: TradingSimulationService,
         preferencesStore: AppPreferencesProviding = UserDefaultsAppPreferencesStore(),
-        tradeInsightService: TradeSummaryInsightService = LocalInsightSummaryService()
+        tradeInsightService: TradeSummaryInsightService = LocalInsightSummaryService(),
+        pendingOrderService: PendingOrderMatching? = nil
     ) {
         self.asset = asset
         self.side = side
@@ -52,6 +57,7 @@ final class TradeTicketViewModel: ObservableObject {
         self.tradingSimulationService = tradingSimulationService
         self.preferencesStore = preferencesStore
         self.tradeInsightService = tradeInsightService
+        self.pendingOrderService = pendingOrderService
         self.slippagePreset = preferencesStore.currentPreferences.simulatorRisk.slippagePreset
         bind()
         applyRiskDefaults()
@@ -65,6 +71,11 @@ final class TradeTicketViewModel: ObservableObject {
         }
         guard let latestPrice else {
             submissionError = TradingSimulationError.missingQuote(symbol: asset.symbol).localizedDescription
+            return
+        }
+
+        guard orderType == .market else {
+            submitPendingOrder(quantity: quantity)
             return
         }
 
@@ -92,6 +103,55 @@ final class TradeTicketViewModel: ObservableObject {
         }
 
         isSubmitting = false
+    }
+
+    private func submitPendingOrder(quantity: Decimal) {
+        guard let pendingOrderService else {
+            submissionError = "Pending orders are unavailable."
+            return
+        }
+        guard let triggerPrice = Decimal(string: triggerPriceText.replacingOccurrences(of: ",", with: ".")), triggerPrice > 0 else {
+            submissionError = PendingOrderError.invalidTriggerPrice.localizedDescription
+            return
+        }
+
+        isSubmitting = true
+        submissionError = nil
+        do {
+            let order = try pendingOrderService.place(
+                PendingOrderRequest(
+                    symbol: asset.symbol,
+                    side: side,
+                    type: orderType,
+                    quantity: quantity,
+                    triggerPrice: triggerPrice,
+                    submittedAt: Date()
+                )
+            )
+            placedPendingOrder = order
+            didSubmitSuccessfully = true
+            logger.info("Pending order placed from ticket for \(self.asset.symbol, privacy: .public)")
+        } catch {
+            logger.error("Pending order placement failed: \(error.localizedDescription, privacy: .public)")
+            submissionError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        }
+        isSubmitting = false
+    }
+
+    /// Human phrasing of the crossing rule for the selected order shape.
+    var triggerHintText: String? {
+        guard orderType != .market else { return nil }
+        guard let trigger = Decimal(string: triggerPriceText.replacingOccurrences(of: ",", with: ".")), trigger > 0 else {
+            return "Enter the price that should trigger this order."
+        }
+        let priceText = "$" + trigger.voltPriceString(precision: asset.pricePrecision)
+        switch (orderType, side) {
+        case (.limit, .buy): return "Fills when the price drops to \(priceText) or below."
+        case (.limit, .sell): return "Fills when the price rises to \(priceText) or above."
+        case (.stop, .buy): return "Fills when the price rises to \(priceText) or above."
+        case (.stop, .sell): return "Fills when the price falls to \(priceText) or below."
+        case (.market, _): return nil
+        }
     }
 
     /// Routes through the same preferences path Settings uses; simulation reads the
@@ -124,6 +184,13 @@ final class TradeTicketViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest($orderType, $triggerPriceText)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _ in
+                self?.revalidate()
+            }
+            .store(in: &cancellables)
+
         preferencesStore.preferencesPublisher
             .map(\.simulatorRisk.slippagePreset)
             .receive(on: RunLoop.main)
@@ -145,6 +212,30 @@ final class TradeTicketViewModel: ObservableObject {
             validationState = .invalid("Waiting for quote…")
             estimatedCost = 0
             canSubmit = false
+            return
+        }
+
+        // Pending orders execute at the crossing tick with no slippage, so the
+        // estimate (and the buy-side cash check) uses the trigger price instead
+        // of the slipped live price.
+        if orderType != .market {
+            guard let triggerPrice = Decimal(string: triggerPriceText.replacingOccurrences(of: ",", with: ".")), triggerPrice > 0 else {
+                validationState = .invalid("Enter a trigger price.")
+                estimatedCost = 0
+                canSubmit = false
+                return
+            }
+            estimatedExecutionPrice = triggerPrice
+            let cost = triggerPrice * quantity
+            estimatedCost = cost
+            riskWarning = riskWarningMessage(orderValue: cost)
+            if side == .buy, cost > availableCash {
+                validationState = .invalid("Insufficient cash balance.")
+                canSubmit = false
+                return
+            }
+            validationState = .valid
+            canSubmit = true
             return
         }
 
@@ -217,16 +308,26 @@ struct TradeTicketView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Spacing.gutter) {
                     sideToggle
+                    orderTypeSection
                     amountCard
-                    slippageSection
+                    if viewModel.orderType != .market {
+                        triggerCard
+                    } else {
+                        // Pending fills execute at the crossing tick price, so
+                        // slippage tolerance only applies to market orders.
+                        slippageSection
+                    }
                     balanceRow
                     messages
                     PrimaryButton(
-                        title: "\(viewModel.side == .buy ? "Buy" : "Sell") \(viewModel.asset.baseCurrency)",
+                        title: submitTitle,
                         style: viewModel.side == .buy ? .accent : .danger,
                         isEnabled: viewModel.canSubmit && viewModel.isSubmitting == false
                     ) {
                         viewModel.submitOrder()
+                    }
+                    if let pending = viewModel.placedPendingOrder {
+                        pendingConfirmationCard(pending)
                     }
                     if let fill = viewModel.lastFill {
                         recapCard(fill)
@@ -324,6 +425,95 @@ struct TradeTicketView: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private var submitTitle: String {
+        let action = viewModel.side == .buy ? "Buy" : "Sell"
+        switch viewModel.orderType {
+        case .market: return "\(action) \(viewModel.asset.baseCurrency)"
+        case .limit: return "Place limit \(action.lowercased())"
+        case .stop: return "Place stop \(action.lowercased())"
+        }
+    }
+
+    private var orderTypeSection: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Order type")
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            HStack(spacing: Spacing.sm) {
+                orderTypePill("Market", type: .market)
+                orderTypePill("Limit", type: .limit)
+                orderTypePill("Stop", type: .stop)
+            }
+        }
+    }
+
+    private func orderTypePill(_ title: String, type: OrderType) -> some View {
+        FilterPill(
+            title: title,
+            isSelected: viewModel.orderType == type,
+            isMono: true,
+            expands: true
+        ) {
+            viewModel.orderType = type
+        }
+    }
+
+    private var triggerCard: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Text("Trigger price (USD)")
+                    .font(Typography.secondary)
+                    .foregroundStyle(Color.voltTextSecondary)
+                HStack(alignment: .firstTextBaseline, spacing: Spacing.xs) {
+                    Text("$")
+                        .font(Typography.amountEntry)
+                        .foregroundStyle(viewModel.triggerPriceText.isEmpty ? Color.voltTextTertiary : Color.voltTextPrimary)
+                    TextField(
+                        "",
+                        text: $viewModel.triggerPriceText,
+                        prompt: Text("0").foregroundStyle(Color.voltTextTertiary)
+                    )
+                    .keyboardType(.decimalPad)
+                    .font(Typography.amountEntry)
+                    .foregroundStyle(Color.voltTextPrimary)
+                    .tint(Color.voltAccent)
+                }
+                if let hint = viewModel.triggerHintText {
+                    Text(hint)
+                        .font(Typography.monoCaption)
+                        .foregroundStyle(Color.voltTextTertiary)
+                }
+            }
+        }
+    }
+
+    private func pendingConfirmationCard(_ order: PendingOrder) -> some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            Text("Resting order")
+                .font(Typography.secondary)
+                .foregroundStyle(Color.voltTextSecondary)
+            SectionCard {
+                VStack(alignment: .leading, spacing: Spacing.sm) {
+                    HStack {
+                        Text("\(order.type == .limit ? "LIMIT" : "STOP") \(order.side == .buy ? "BUY" : "SELL")")
+                            .font(Typography.monoCaption.weight(.bold))
+                            .foregroundStyle(order.side == .buy ? Color.voltAccent : Color.voltDanger)
+                        Spacer()
+                        Text("Waiting for trigger")
+                            .font(Typography.monoCaption)
+                            .foregroundStyle(Color.voltTextTertiary)
+                    }
+                    Text("\(order.quantity.voltPriceString(precision: 8)) \(viewModel.asset.baseCurrency) @ $\(order.triggerPrice.voltPriceString(precision: viewModel.asset.pricePrecision))")
+                        .font(Typography.monoBody)
+                        .foregroundStyle(Color.voltTextPrimary)
+                    Text("It will fill automatically when the live price crosses the trigger.")
+                        .font(Typography.secondary)
+                        .foregroundStyle(Color.voltTextSecondary)
+                }
+            }
+        }
     }
 
     private var amountCard: some View {
