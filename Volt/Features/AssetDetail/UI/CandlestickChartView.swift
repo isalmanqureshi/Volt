@@ -1,6 +1,41 @@
 import Charts
 import SwiftUI
 
+/// Y-axis domain for the candle chart, derived from the rendered data.
+///
+/// Swift Charts' automatic quantitative domain anchors at zero, which compresses
+/// crypto candles — whose intraday range is a tiny fraction of their absolute
+/// price — into a flat hairline (BTC oscillating 95,000–95,400 occupies ~0.4% of
+/// a 0-anchored plot). The domain must instead hug the data's low/high with a
+/// small padding margin.
+enum CandleChartScale {
+    static func yDomain(
+        for candles: [Candle],
+        livePrice: Decimal?,
+        paddingFraction: Double = 0.08
+    ) -> ClosedRange<Double> {
+        var lows = candles.map { $0.low.chartValue }
+        var highs = candles.map { $0.high.chartValue }
+        if let livePrice {
+            lows.append(livePrice.chartValue)
+            highs.append(livePrice.chartValue)
+        }
+        guard let minLow = lows.min(), let maxHigh = highs.max() else {
+            return 0...1
+        }
+
+        let span = maxHigh - minLow
+        guard span > 0 else {
+            // Single-price data: open a small window around it so marks stay visible.
+            let pad = max(abs(maxHigh) * 0.01, 0.0001)
+            return (minLow - pad)...(maxHigh + pad)
+        }
+
+        let pad = span * paddingFraction
+        return (minLow - pad)...(maxHigh + pad)
+    }
+}
+
 /// Candlestick chart matching the Volt design: teal up / red down candles on the
 /// deep-well background, with a long-press crosshair that reports the focused candle.
 struct CandlestickChartView: View {
@@ -75,6 +110,9 @@ struct CandlestickChartView: View {
         }
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
+        // Without an explicit domain, Swift Charts anchors the Y axis at zero and
+        // every symbol's candles collapse into a flat line (see CandleChartScale).
+        .chartYScale(domain: CandleChartScale.yDomain(for: candles, livePrice: livePrice))
         .chartPlotStyle { plot in
             plot.background(Color.voltSurfaceDeep)
         }
