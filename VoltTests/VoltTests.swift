@@ -76,7 +76,9 @@ final class VoltTests: XCTestCase {
     }
 }
 
-private final class TradingTestMarketDataRepository: MarketDataRepository {
+// Shared across Milestone5 and ClosePositionViewModel suites, so it must be
+// module-internal rather than file-private.
+final class TradingTestMarketDataRepository: MarketDataRepository {
     private let quotesSubject: CurrentValueSubject<[Quote], Never>
     init(quote: Quote) {
         quotesSubject = CurrentValueSubject([quote])
