@@ -65,7 +65,7 @@ final class Milestone8ExperienceTests: XCTestCase {
             resultingPosition: nil,
             orderRecord: .init(id: UUID(), symbol: "BTC/USD", side: .sell, type: .market, quantity: 1, executedPrice: 110, grossValue: 110, submittedAt: .now, executedAt: .now, status: .filled, source: .simulated, linkedPositionID: nil),
             activityEvent: .init(id: UUID(), kind: .fullClose, symbol: "BTC/USD", quantity: 1, price: 110, timestamp: .now, orderID: UUID(), relatedPositionID: nil, realizedPnL: 10),
-            realizedPnLEntry: .init(id: UUID(), symbol: "BTC/USD", quantityClosed: 1, averageEntryPrice: 100, exitPrice: 110, realizedPnL: 10, closedAt: .now, linkedPositionID: nil, note: nil)
+            realizedPnLEntry: .init(id: UUID(), symbol: "BTC/USD", quantityClosed: 1, averageEntryPrice: 100, exitPrice: 110, realizedPnL: 10, closedAt: .now, linkedPositionID: UUID(), note: nil)
         )
         let summary = PortfolioSummary(cashBalance: 1_000, positionsMarketValue: 0, unrealizedPnL: 0, realizedPnL: 10, totalEquity: 1_010, dayChange: 0)
 
