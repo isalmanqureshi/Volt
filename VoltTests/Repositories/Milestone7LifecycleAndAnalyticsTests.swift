@@ -41,11 +41,15 @@ final class Milestone7LifecycleAndAnalyticsTests: XCTestCase {
         task.cancel()
         _ = await task.result
 
-        XCTAssertEqual(await seedProvider.fetchCount, 1)
+        // Hoist actor-isolated reads out of XCTAssertEqual's autoclosure, which
+        // is nonisolated and can't carry an await.
+        let fetchCountAfterCancel = await seedProvider.fetchCount
+        XCTAssertEqual(fetchCountAfterCancel, 1)
         XCTAssertEqual(engine.startCalls, 0)
 
         await repository.start()
-        XCTAssertEqual(await seedProvider.fetchCount, 2)
+        let fetchCountAfterRetry = await seedProvider.fetchCount
+        XCTAssertEqual(fetchCountAfterRetry, 2)
         XCTAssertEqual(engine.startCalls, 1)
     }
 
