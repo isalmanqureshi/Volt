@@ -2,6 +2,10 @@ import Combine
 import XCTest
 @testable import Volt
 
+// Main-actor isolated to match the other view-model/repository test suites:
+// InMemoryPortfolioRepository's conformance is main-actor isolated, so it can
+// only be handed to the matching service from a main-actor context.
+@MainActor
 final class PendingOrderMatchingTests: XCTestCase {
     private func makeStack(cash: Decimal = 50_000) -> (market: TickDrivenMarketDataRepository, portfolio: InMemoryPortfolioRepository, service: DefaultPendingOrderMatchingService) {
         let market = TickDrivenMarketDataRepository()

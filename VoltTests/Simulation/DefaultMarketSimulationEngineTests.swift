@@ -62,7 +62,7 @@ final class DefaultMarketSimulationEngineTests: XCTestCase {
             return
         }
 
-        let delta = abs(((price - seedPrice) / seedPrice) as NSDecimalNumber).doubleValue
+        let delta = (abs((price - seedPrice) / seedPrice) as NSDecimalNumber).doubleValue
         XCTAssertLessThanOrEqual(delta, (maxPercent as NSDecimalNumber).doubleValue + 0.0001)
     }
 }

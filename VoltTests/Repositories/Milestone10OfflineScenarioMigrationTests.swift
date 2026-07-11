@@ -74,6 +74,7 @@ private final class PassiveSimulationEngine: MarketSimulationEngine {
     var ticksPublisher: AnyPublisher<MarketTick, Never> { Empty().eraseToAnyPublisher() }
     var connectionStatePublisher: AnyPublisher<StreamConnectionState, Never> { Just(.connected).eraseToAnyPublisher() }
     func start(with seedQuotes: [Quote]) { _ = seedQuotes }
+    func stop() {}
     func reseed(with quotes: [Quote]) { _ = quotes }
 }
 
